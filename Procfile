@@ -1,2 +1,1 @@
-echo "worker: python runBot.py" > Procfile
-cat Procfile  
+worker: python runBot.py
