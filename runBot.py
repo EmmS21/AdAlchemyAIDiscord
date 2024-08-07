@@ -24,6 +24,18 @@ user_states = {}
 guild_states = {}
 setup_user_id = None
 
+async def sync_commands():
+    try:
+        synced = await tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(f"Error syncing commands: {e}")
+
+@client.event
+async def on_ready():
+    print(f'{client.user} has connected to Discord!')
+    await sync_commands()
+
 @client.event
 async def on_guild_join(guild):
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
