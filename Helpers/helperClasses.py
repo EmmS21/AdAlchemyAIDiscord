@@ -48,6 +48,9 @@ class ConfirmPricing(discord.ui.View):
         mappings_db_name = "mappings"
         mappings_collection_name = "companies"
 
+        print(f"Debug - onboarding_collection_name: {onboarding_collection_name}, type: {type(onboarding_collection_name)}")
+        print(f"Debug - mappings_collection_name: {mappings_collection_name}, type: {type(mappings_collection_name)}")
+
         try:
             onboarding_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, onboarding_db_name, onboarding_collection_name)
             mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, mappings_db_name, mappings_collection_name)
