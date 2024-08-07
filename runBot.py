@@ -57,16 +57,9 @@ async def on_guild_join(guild):
                 break
     else:
         welcome_message = """
-        Hello everyone! I am AdAlchemyAI, a bot to help you run your digital marketing. I look at your site to understand what your business does, I do this by going to your website, extracting information about your business, your users and what you do. 
-        
-        After this I will browse the internet as though I am your users, getting keywords people would likely use to show intent to interact with your business. 
-        
-        I use this and other tools to get the best keywords for you. You can approve the keywords you would like me to use by using the /keywords slash command, you can also edit the ad text I create for you using /adtext slash command.
-        
-        I will only use the keywords and adtext you approved to run your ads. I will ask you to set a daily budget for your campaign using /setcampaignbudget. I will not let you run ads without you setting your budget first
-        
-        I will only run ads when you manually trigger this process using /runads. Ok, let's start the onboarding process. Remember you can always use /help to see what commands you can use.
+        Hello! I am AdAlchemyAI, a bot to help you get good leads for a cost effective price for your business by automating the process of setting up, running and optimizing your Google Ads. I only run ads after you manually approve the keywords I researched, the ad text ideas I generate and the information I use to carry out my research.
 
+        But for now I would like to learn more about you and your business.
         """
         first_question = "What is the name of your business?"
         for channel in guild.text_channels:
@@ -126,14 +119,10 @@ async def on_message(message):
 
             guild_business_data[guild_id]['website_link'] = website_link
             
-            embed = discord.Embed(title="Pricing Model Breakdown", color=discord.Color.blue())
-            embed.add_field(name="Daily Budget", value="0-$100\n$100 - $1000\n>$1000", inline=True)
-            embed.add_field(name="Fee", value="25%\n20%\n15%", inline=True)
-           
-            await message.channel.send("Here's a breakdown of our pricing model:", embed=embed)
-            
+            await message.channel.send("We are currently running in beta, we are using this as an opportunity to discuss a pricing that is commensurate to the value generated and your use cases.")
+                       
             view = ConfirmPricing(guild_id)
-            await message.channel.send("Do you consent to this pricing model?", view=view)
+            await message.channel.send("Please confirm your interest in joining the AdAlchemyAI waiting list", view=view)
             guild_states[guild_id] = "waiting_for_consent"
         else:
             await message.channel.send("That doesn't appear to be a valid URL. Please enter a valid website URL (e.g., https://www.example.com):")
