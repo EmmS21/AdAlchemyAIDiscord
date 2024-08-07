@@ -35,7 +35,7 @@ class ConfirmPricing(discord.ui.View):
         guild = interaction.guild
         owner = guild.owner
 
-        await interaction.response.send_message(f"A mapping has been made between your Discord ID: {owner.id} and your business {business_name}. This helps us remember you")
+        await interaction.response.send_message(f"A mapping has been made between your Discord ID: {owner.id} and your business {self.business_name}. This helps us remember you")
         
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
 
