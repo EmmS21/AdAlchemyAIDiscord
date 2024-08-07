@@ -145,7 +145,7 @@ class HelpView(discord.ui.View):
         self.current_page = 0
 
     @discord.ui.button(label="Previous", style=discord.ButtonStyle.gray)
-    async def previous_button(self, interaction: discord.Interaction):
+    async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.current_page > 0:
             self.current_page -= 1
             await interaction.response.edit_message(content=self.pages[self.current_page], view=self)
@@ -153,7 +153,7 @@ class HelpView(discord.ui.View):
             await interaction.response.defer()
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.gray)
-    async def next_button(self, interaction: discord.Interaction):
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.current_page < len(self.pages) - 1:
             self.current_page += 1
             await interaction.response.edit_message(content=self.pages[self.current_page], view=self)
