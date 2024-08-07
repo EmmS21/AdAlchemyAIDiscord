@@ -121,7 +121,7 @@ async def on_message(message):
             
             await message.channel.send("We are currently running in beta, we are using this as an opportunity to discuss a pricing that is commensurate to the value generated and your use cases.")
                        
-            view = ConfirmPricing(guild_id)
+            view = ConfirmPricing(guild_id, business_name, website_link)
             await message.channel.send("Please confirm your interest in joining the AdAlchemyAI waiting list", view=view)
             guild_states[guild_id] = "waiting_for_consent"
         else:

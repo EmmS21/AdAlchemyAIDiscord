@@ -9,9 +9,12 @@ guild_business_data = defaultdict(dict)
 guild_states = {}
 
 class ConfirmPricing(discord.ui.View):
-    def __init__(self, guild_id):
+    def __init__(self, guild_id, business_name, website_link):
         super().__init__()
         self.guild_id = guild_id
+        self.business_name = business_name
+        self.website_link = website_link
+
         self.is_second_chance = False
 
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
@@ -32,9 +35,6 @@ class ConfirmPricing(discord.ui.View):
         guild = interaction.guild
         owner = guild.owner
 
-        business_name = guild_business_data[self.guild_id].get('business_name')
-        website_link = guild_business_data[self.guild_id].get('website_link')
-
         await interaction.response.send_message(f"A mapping has been made between your Discord ID: {owner.id} and your business {business_name}. This helps us remember you")
         
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
@@ -44,12 +44,9 @@ class ConfirmPricing(discord.ui.View):
             return
 
         onboarding_db_name = "onboarding_agent"
-        onboarding_collection_name = business_name
+        onboarding_collection_name = self.business_name
         mappings_db_name = "mappings"
         mappings_collection_name = "companies"
-
-        print(f"Debug - onboarding_collection_name: {onboarding_collection_name}, type: {type(onboarding_collection_name)}")
-        print(f"Debug - mappings_collection_name: {mappings_collection_name}, type: {type(mappings_collection_name)}")
 
         try:
             onboarding_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, onboarding_db_name, onboarding_collection_name)
@@ -60,15 +57,15 @@ class ConfirmPricing(discord.ui.View):
                 return
 
             business_data = {
-                "business": business_name,
-                "website": website_link
+                "business": self.business_name,
+                "website": self.website_link
             }
 
             onboarding_collection.update_one({}, {"$set": business_data}, upsert=True)
         
             mappings_collection.update_one(
                 {"owner_id": owner.id},
-                {"$set": {"business_name": business_name}},
+                {"$set": {"business_name": self.business_name}},
                 upsert=True
             )
 
