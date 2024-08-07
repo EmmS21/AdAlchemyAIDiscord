@@ -13,7 +13,7 @@ class ConfirmPricing(discord.ui.View):
         self.guild_id = guild_id
 
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
-    async def yes(self, interaction: discord.Interaction):
+    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         owner = guild.owner
 
@@ -62,7 +62,7 @@ class ConfirmPricing(discord.ui.View):
         self.stop()
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.red)
-    async def no(self, interaction: discord.Interaction):
+    async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("You have not consented to the pricing model. If you have any questions or concerns, please reach out to our support team.")
         guild_states[self.guild_id] = "setup_complete"
         self.stop()
