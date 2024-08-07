@@ -27,7 +27,7 @@ class ConfirmPricing(discord.ui.View):
             await interaction.response.send_message("If you would like to restart the process, add the bot to a new server. Alternatively, feel free to email emmanuel@emmanuelsibanda.com if you have any questions.")
             guild_states[self.guild_id] = "conversation_ended"
             self.stop()
-            
+
     async def handle_yes_response(self, interaction: discord.Interaction):
         guild = interaction.guild
         owner = guild.owner
@@ -35,8 +35,7 @@ class ConfirmPricing(discord.ui.View):
         business_name = guild_business_data[self.guild_id].get('business_name')
         website_link = guild_business_data[self.guild_id].get('website_link')
 
-        await interaction.response.send_message("You have consented to the pricing model. Great! You can now use the /keywords command to start selecting keywords for your campaign.")
-        await interaction.channel.send(f"A mapping has been made between your ID: {owner.id} and your business {business_name}")
+        await interaction.response.send_message(f"A mapping has been made between your Discord ID: {owner.id} and your business {business_name}. This helps us remember you")
         
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
         onboarding_db_name = "onboarding_agent"
@@ -71,7 +70,7 @@ class ConfirmPricing(discord.ui.View):
             inline=False
         )
 
-        await interaction.channel.send(embed=embed)
+        await interaction.followup.send(embed=embed)
 
         guild_states[self.guild_id] = "setup_complete"
         self.stop()
