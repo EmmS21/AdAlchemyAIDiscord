@@ -227,24 +227,14 @@ async def business(interaction: discord.Interaction):
     
     if is_onboarded:
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
-        marketing_agent_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", "business_name")
-
         mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
         user_record = mappings_collection.find_one({"owner_ids": user_id})
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
-            
-            # Get all collection names in the database
-            collection_names = db.list_collection_names()
-            
-            # Find a case-insensitive match for the business name
-            matching_collection = next((name for name in collection_names if name.lower() == business_name.lower()), None)
-            
-            if matching_collection:
-                # Use the matched collection name to get the data
-                business_collection = db[matching_collection]
-                
+            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name, case_insensitive=True)
+                        
+            if business_collection:
                 # Get the latest document from the collection
                 latest_document = business_collection.find_one(sort=[("_id", -1)])
                 
@@ -264,5 +254,6 @@ async def business(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
+
 
 client.run(os.getenv('DISCORD_TOKEN'))
