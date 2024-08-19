@@ -240,7 +240,12 @@ async def business(interaction: discord.Interaction):
                 
                 if latest_document and 'business' in latest_document:
                     business_data = latest_document['business']
-                    pages = create_paginated_embed({business_data})
+                    if isinstance(business_data, str):
+                        formatted_data = business_data
+                    else:
+                        formatted_data = str(business_data)  # Convert to string if it's not already
+                    
+                    pages = create_paginated_embed(f"Here's the latest business information:\n\n{formatted_data}")
                     
                     if len(pages) > 1:
                         view = PaginationView(pages)
@@ -248,7 +253,7 @@ async def business(interaction: discord.Interaction):
                     else:
                         await interaction.response.send_message(pages[0], ephemeral=True)
                 else:
-                    await interaction.response.send_message(f"No data found in the collection for the business: {business_name}", ephemeral=True)
+                    await interaction.response.send_message(f"No business data found for: {business_name}", ephemeral=True)
             else:
                 await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
         else:
@@ -259,5 +264,5 @@ async def business(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
-
+        
 client.run(os.getenv('DISCORD_TOKEN'))
