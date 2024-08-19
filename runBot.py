@@ -32,6 +32,15 @@ async def sync_commands():
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
+async def check_onboarded_status(guild_id):
+    CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+    mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+    
+    guild_record = mappings_collection.find_one({"guild_id": guild_id})
+    if guild_record and guild_record.get("onboarded") == True:
+        return True
+    return False
+
 @client.event
 async def on_ready():
     print(f'{client.user} has connected to Discord!')
@@ -184,7 +193,9 @@ async def help_command(interaction: discord.Interaction):
 
 @tree.command(name="business", description="Access business information")
 async def business(interaction: discord.Interaction):
-    if guild_onboarded_status.get(interaction.guild_id, False):
+    is_onboarded = await check_onboarded_status(interaction.guild_id)
+    
+    if is_onboarded:
         await interaction.response.send_message("Yes this works", ephemeral=True)
     else:
         calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
@@ -192,5 +203,6 @@ async def business(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
+
 
 client.run(os.getenv('DISCORD_TOKEN'))
