@@ -182,4 +182,15 @@ async def help_command(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("Sorry, the help file couldn't be found.", ephemeral=True)
 
+@tree.command(name="business", description="Access business information")
+async def business(interaction: discord.Interaction):
+    if guild_onboarded_status.get(interaction.guild_id, False):
+        await interaction.response.send_message("Yes this works", ephemeral=True)
+    else:
+        calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
+        await interaction.response.send_message(
+            f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
+            ephemeral=True
+        )
+
 client.run(os.getenv('DISCORD_TOKEN'))
