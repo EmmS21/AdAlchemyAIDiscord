@@ -4,13 +4,14 @@ from Helpers.helperClasses import ConfirmPricing
 import discord
 from discord import app_commands
 import os
-# import dotenv
+import dotenv
 from collections import defaultdict
 import re
 from pathlib import Path
 
-# dotenv.load_dotenv()
+dotenv.load_dotenv()
 guild_business_data = defaultdict(dict)
+guild_onboarded_status = {}
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -48,7 +49,13 @@ async def on_guild_join(guild):
     if owner_record:
         business_name = owner_record.get("business_name", "valued business")
         welcome_back_message = f"Welcome back {business_name}!"
-        calendly_message = "Please schedule a date to complete your onboarding and discuss your business needs: [Calendly Link](https://calendly.com/emmanuel-emmanuelsibanda/30min)"
+        
+        if owner_record.get("onboarded") == True:  # Explicitly check if onboarded is True
+            calendly_message = "You have full access to all commands. Type / to see available commands."
+            guild_onboarded_status[guild.id] = True
+        else:
+            calendly_message = "Please schedule a date to complete your onboarding and discuss your business needs: [Calendly Link](https://calendly.com/emmanuel-emmanuelsibanda/30min)"
+            guild_onboarded_status[guild.id] = False
 
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
