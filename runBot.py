@@ -135,6 +135,7 @@ async def on_message(message):
     current_state = guild_states.get(guild_id)
 
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+    mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
 
     if current_state == "waiting_for_business_name":
         business_name = message.content.lower()
@@ -150,6 +151,13 @@ async def on_message(message):
             return
         
         guild_business_data[guild_id]['business_name'] = business_name
+
+        # Update the existing record with the business name
+        mappings_collection.update_one(
+            {"user_id": message.author.id},
+            {"$set": {"business_name": business_name}}
+        )
+        
         await message.channel.send(f"Please give me a link to your website {business_name}:")
         guild_states[guild_id] = "waiting_for_website"
 
