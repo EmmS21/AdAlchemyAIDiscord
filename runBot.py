@@ -51,11 +51,12 @@ async def on_ready():
 @client.event
 async def on_guild_join(guild):
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
-    print('connection', CONNECTION_STRING)
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
 
+    user_id = guild.owner.id  # Getting the user_id of the server owner
     owner_id = guild.owner_id
-    owner_record = mappings_collection.find_one({"owner_id": owner_id})
+
+    user_record = mappings_collection.find_one({"user_id": user_id})
 
     webhook_url = None
     for channel in guild.text_channels:
@@ -70,11 +71,11 @@ async def on_guild_join(guild):
             except Exception as e:
                 print(f"Failed to create webhook in channel {channel.id}: {str(e)}")
 
-    if owner_record:
-        business_name = owner_record.get("business_name", "valued business")
+    if user_record:
+        business_name = user_record.get("business_name", "valued business")
         welcome_back_message = f"Welcome back {business_name}!"
         
-        if owner_record.get("onboarded") == True:  
+        if user_record.get("onboarded") == True:  
             calendly_message = "You have full access to all commands. Type / to see available commands."
             guild_onboarded_status[guild.id] = True
         else:
@@ -83,10 +84,10 @@ async def on_guild_join(guild):
 
         if webhook_url:
             mappings_collection.update_one(
-                {"owner_id": owner_id},
+                {"user_id": user_id},
                 {
                     "$set": {"webhook_url": webhook_url},
-                    "$addToSet": {"server_ids": guild.id}
+                    "$addToSet": {"owner_ids": owner_id}
                 },
                 upsert=True
             )
@@ -98,19 +99,20 @@ async def on_guild_join(guild):
                 break
     else:
         welcome_message = """
-        Hello! I am AdAlchemyAI, a bot to help you get good leads for a cost effective price for your business by automating the process of setting up, running and optimizing your Google Ads. I only run ads after you manually approve the keywords I researched, the ad text ideas I generate and the information I use to carry out my research.
+        Hello! I am AdAlchemyAI, a bot to help you get good leads for a cost-effective price for your business by automating the process of setting up, running, and optimizing your Google Ads. I only run ads after you manually approve the keywords I researched, the ad text ideas I generate, and the information I use to carry out my research.
 
-        But for now I would like to learn more about you and your business.
+        But for now, I would like to learn more about you and your business.
         """
         first_question = "What is the name of your business?"
         guild_onboarded_status[guild.id] = False
 
         if webhook_url:
             mappings_collection.insert_one({
-                "owner_id": owner_id,
+                "user_id": user_id,
                 "webhook_url": webhook_url,
                 "onboarded": False,
-                "server_ids": [guild.id]
+                "owner_ids": [owner_id],
+                "business_name": None  # This will be updated later
             })
 
         for channel in guild.text_channels:
@@ -228,8 +230,8 @@ async def help_command(interaction: discord.Interaction):
 
 @tree.command(name="business", description="Access business information")
 async def business(interaction: discord.Interaction):
-    print('accessed')
-    is_onboarded = await check_onboarded_status(interaction.guild_id)
+    user_id = interaction.user.id
+    is_onboarded = await check_onboarded_status(user_id)
     
     if is_onboarded:
         await interaction.response.send_message("Yes this works", ephemeral=True)
