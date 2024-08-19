@@ -232,20 +232,10 @@ async def business(interaction: discord.Interaction):
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
+            # Lowercase the collection name before connecting
+            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
             
-            # Try to connect to the collection with the exact business name
-            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name)
-            
-            if not business_collection:
-                # If the exact match fails, try a case-insensitive match
-                marketing_agent_db = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", None)
-                if marketing_agent_db:
-                    collections = marketing_agent_db.list_collection_names()
-                    matching_collection = next((name for name in collections if name.lower() == business_name.lower()), None)
-                    if matching_collection:
-                        business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", matching_collection)
-            
-            if business_collection:
+            if business_collection is not None:
                 # Get the latest document from the collection
                 latest_document = business_collection.find_one(sort=[("_id", -1)])
                 
