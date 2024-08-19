@@ -319,8 +319,8 @@ async def user_personas(interaction: discord.Interaction):
             if business_collection is not None:
                 document = business_collection.find_one()
                 
-                if document and 'user_personas' in document:
-                    personas = document['user_personas']
+                if document and 'user_persona' in document:
+                    personas = document['user_persona']
                     
                     view = UserPersonaView(personas, business_name)
                     embed = view.get_embed()
@@ -339,5 +339,5 @@ async def user_personas(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
-        
+
 client.run(os.getenv('DISCORD_TOKEN'))
