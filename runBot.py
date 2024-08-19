@@ -37,6 +37,7 @@ async def check_onboarded_status(guild_id):
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
     
     guild_record = mappings_collection.find_one({"guild_id": guild_id})
+    print('gulid', guild_record)
     if guild_record and guild_record.get("onboarded") == True:
         return True
     return False
