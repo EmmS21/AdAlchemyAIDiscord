@@ -1,5 +1,5 @@
 import discord
-from discord import app_commands, ButtonStyle, Embed, File
+from discord import ButtonStyle, Embed
 from discord.ui import Button, View, TextInput, Modal
 from collections import defaultdict
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
@@ -221,3 +221,162 @@ class ResearchPathsView(View):
             embed.add_field(name=f"Path {i}", value=path, inline=False)
         embed.set_footer(text=f"Page {self.current_page + 1} of {(len(self.paths) - 1) // self.per_page + 1}")
         return embed
+    
+class UserPersonaView(View):
+    def __init__(self, personas, business_name):
+        super().__init__()
+        self.personas = personas if isinstance(personas, list) else [personas]
+        self.business_name = business_name
+        self.current_page = 0
+        self.per_page = 1 
+
+        self.previous_button = Button(label="Previous", style=ButtonStyle.gray, disabled=True)
+        self.next_button = Button(label="Next", style=ButtonStyle.gray)
+        self.add_button = Button(label="Add Persona", style=ButtonStyle.green)
+        self.edit_button = Button(label="Edit Persona", style=ButtonStyle.blue)
+        self.delete_button = Button(label="Delete Persona", style=ButtonStyle.red)
+        
+        self.previous_button.callback = self.previous_callback
+        self.next_button.callback = self.next_callback
+        self.add_button.callback = self.add_callback
+        self.edit_button.callback = self.edit_callback
+        self.delete_button.callback = self.delete_callback
+        
+        self.add_item(self.previous_button)
+        self.add_item(self.next_button)
+        self.add_item(self.add_button)
+        self.add_item(self.edit_button)
+        self.add_item(self.delete_button)
+
+    async def previous_callback(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        await self.update_message(interaction)
+
+    async def next_callback(self, interaction: discord.Interaction):
+        self.current_page = min(len(self.personas) - 1, self.current_page + 1)
+        await self.update_message(interaction)
+
+    async def add_callback(self, interaction: discord.Interaction):
+        modal = PersonaModal(self.add_persona, title="Add New Persona")
+        await interaction.response.send_modal(modal)
+
+    async def edit_callback(self, interaction: discord.Interaction):
+        current_persona = self.personas[self.current_page]
+        modal = PersonaModal(self.edit_persona, title="Edit Persona", default_values=current_persona)
+        await interaction.response.send_modal(modal)
+
+    async def delete_callback(self, interaction: discord.Interaction):
+        await self.delete_persona(interaction)
+
+    async def update_message(self, interaction):
+        self.previous_button.disabled = (self.current_page == 0)
+        self.next_button.disabled = (self.current_page == len(self.personas) - 1)
+        self.edit_button.disabled = (len(self.personas) == 0)
+        self.delete_button.disabled = (len(self.personas) == 0)
+        
+        embed = self.get_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    def get_embed(self):
+        if not self.personas:
+            return Embed(title="User Personas", description="No personas found. Add a new one!", color=discord.Color.blue())
+        
+        persona = self.personas[self.current_page]
+        embed = Embed(title=f"{persona['title']}", color=discord.Color.blue())
+        
+        embed.add_field(name="Demographics", value=persona['demographics'], inline=False)
+        embed.add_field(name="Motivation", value=persona['motivation'], inline=False)
+        embed.add_field(name="Pain Points", value=persona['pain_points'], inline=False)
+        embed.add_field(name="Goals", value=persona['goals'], inline=False)
+        embed.add_field(name="Preferences", value=persona['preferences'], inline=False)
+        
+        embed.set_footer(text=f"Persona {self.current_page + 1} of {len(self.personas)}")
+        return embed
+
+    async def add_persona(self, interaction: discord.Interaction, persona_data: dict):
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", self.business_name.lower())
+        
+        if business_collection:
+            result = business_collection.update_one(
+                {},
+                {"$push": {"user_personas": persona_data}},
+                upsert=True
+            )
+            
+            if result.modified_count > 0 or result.upserted_id:
+                self.personas.append(persona_data)
+                self.current_page = len(self.personas) - 1
+                await interaction.response.send_message("New persona added successfully!", ephemeral=True)
+                await self.update_message(interaction)
+            else:
+                await interaction.response.send_message("Failed to add new persona.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Failed to connect to the database.", ephemeral=True)
+
+    async def edit_persona(self, interaction: discord.Interaction, persona_data: dict):
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", self.business_name.lower())
+        
+        if business_collection:
+            result = business_collection.update_one(
+                {},
+                {"$set": {f"user_personas.{self.current_page}": persona_data}}
+            )
+            
+            if result.modified_count > 0:
+                self.personas[self.current_page] = persona_data
+                await interaction.response.send_message("Persona updated successfully!", ephemeral=True)
+                await self.update_message(interaction)
+            else:
+                await interaction.response.send_message("Failed to update persona.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Failed to connect to the database.", ephemeral=True)
+
+    async def delete_persona(self, interaction: discord.Interaction):
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", self.business_name.lower())
+        
+        if business_collection:
+            result = business_collection.update_one(
+                {},
+                {"$pull": {"user_personas": self.personas[self.current_page]}}
+            )
+            
+            if result.modified_count > 0:
+                del self.personas[self.current_page]
+                self.current_page = max(0, self.current_page - 1)
+                await interaction.response.send_message("Persona deleted successfully!", ephemeral=True)
+                await self.update_message(interaction)
+            else:
+                await interaction.response.send_message("Failed to delete persona.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Failed to connect to the database.", ephemeral=True)
+
+class PersonaModal(Modal):
+    def __init__(self, callback, title="Persona", default_values=None):
+        super().__init__(title=title)
+        self.callback = callback
+        self.add_item(TextInput(label="Title", style=TextStyle.short, placeholder="E.g., Finance Bro Changing Careers to Software Engineering", required=True, 
+                                default=default_values.get('title', '') if default_values else ''))
+        self.add_item(TextInput(label="Demographics", style=TextStyle.paragraph, placeholder="Age, gender, current role, education, location", required=True,
+                                default=default_values.get('demographics', '') if default_values else ''))
+        self.add_item(TextInput(label="Motivation", style=TextStyle.paragraph, placeholder="Reasons for career change", required=True,
+                                default=default_values.get('motivation', '') if default_values else ''))
+        self.add_item(TextInput(label="Pain Points", style=TextStyle.paragraph, placeholder="Challenges and concerns", required=True,
+                                default=default_values.get('pain_points', '') if default_values else ''))
+        self.add_item(TextInput(label="Goals and Preferences", style=TextStyle.paragraph, placeholder="Career goals and learning preferences", required=True,
+                                default=default_values.get('goals', '') + '\n' + default_values.get('preferences', '') if default_values else ''))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        goals_and_preferences = self.children[4].value.split('\n', 1)
+        persona_data = {
+            'title': self.children[0].value,
+            'demographics': self.children[1].value,
+            'motivation': self.children[2].value,
+            'pain_points': self.children[3].value,
+            'goals': goals_and_preferences[0],
+            'preferences': goals_and_preferences[1] if len(goals_and_preferences) > 1 else ''
+        }
+        await self.callback(interaction, persona_data)
+
