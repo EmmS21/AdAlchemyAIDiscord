@@ -1,6 +1,7 @@
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
 from Helpers.helperfuncs import website_exists_in_db
 from Helpers.helperClasses import ConfirmPricing
+from Helpers.pagination import create_paginated_embed, PaginationView
 import discord
 from discord import app_commands
 import os
@@ -232,17 +233,20 @@ async def business(interaction: discord.Interaction):
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
-            # Lowercase the collection name before connecting
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
             
             if business_collection is not None:
-                # Get the latest document from the collection
                 latest_document = business_collection.find_one(sort=[("_id", -1)])
                 
                 if latest_document:
-                    # Format the business data for display
                     formatted_data = "\n".join([f"{key}: {value}" for key, value in latest_document.items() if key != "_id"])
-                    await interaction.response.send_message(f"Here's the latest information for your business:\n\n{formatted_data}", ephemeral=True)
+                    pages = create_paginated_embed(f"Here's the latest information for your business:\n\n{formatted_data}")
+                    
+                    if len(pages) > 1:
+                        view = PaginationView(pages)
+                        await interaction.response.send_message(pages[0], view=view, ephemeral=True)
+                    else:
+                        await interaction.response.send_message(pages[0], ephemeral=True)
                 else:
                     await interaction.response.send_message(f"No data found in the collection for the business: {business_name}", ephemeral=True)
             else:
