@@ -226,7 +226,30 @@ async def business(interaction: discord.Interaction):
     is_onboarded = await check_onboarded_status(user_id)
     
     if is_onboarded:
-        await interaction.response.send_message("Yes this works", ephemeral=True)
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        marketing_agent_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", "business_name")
+
+        mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+        user_record = mappings_collection.find_one({"owner_ids": user_id})
+        
+        if user_record and "business_name" in user_record:
+            business_name = user_record["business_name"]
+            
+            # Perform a case-insensitive search for the business name
+            business_data = marketing_agent_collection.find_one(
+                {"business_name": {"$regex": f"^{re.escape(business_name)}$", "$options": "i"}},
+                sort=[("_id", -1)]  # Sort by _id in descending order to get the latest document
+            )
+            
+            if business_data:
+                # Format the business data for display
+                formatted_data = "\n".join([f"{key}: {value}" for key, value in business_data.items() if key != "_id"])
+                await interaction.response.send_message(f"Here's the latest information for your business:\n\n{formatted_data}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"No data found for the business: {business_name}", ephemeral=True)
+        else:
+            await interaction.response.send_message("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
+
     else:
         calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
         await interaction.response.send_message(
