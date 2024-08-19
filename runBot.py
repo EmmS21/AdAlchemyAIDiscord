@@ -1,6 +1,6 @@
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
 from Helpers.helperfuncs import website_exists_in_db
-from Helpers.helperClasses import ConfirmPricing
+from Helpers.helperClasses import ConfirmPricing, BusinessEditModal, BusinessView
 from Helpers.pagination import create_paginated_embed, PaginationView
 import discord
 from discord import app_commands
@@ -221,7 +221,7 @@ async def help_command(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("Sorry, the help file couldn't be found.", ephemeral=True)
 
-@tree.command(name="business", description="Access business information")
+@tree.command(name="business", description="View and edit business information")
 async def business(interaction: discord.Interaction):
     user_id = interaction.user.id
     is_onboarded = await check_onboarded_status(user_id)
@@ -236,22 +236,18 @@ async def business(interaction: discord.Interaction):
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
             
             if business_collection is not None:
-                latest_document = business_collection.find_one(sort=[("_id", -1)])
+                document = business_collection.find_one()
                 
-                if latest_document and 'business' in latest_document:
-                    business_data = latest_document['business']
-                    if isinstance(business_data, str):
-                        formatted_data = business_data
-                    else:
-                        formatted_data = str(business_data)  # Convert to string if it's not already
+                if document and 'business' in document:
+                    business_data = document['business']
                     
-                    pages = create_paginated_embed(f"Here's the latest business information:\n\n{formatted_data}")
+                    if not business_data:
+                        await interaction.response.send_message("No business information found.")
+                        return
                     
-                    if len(pages) > 1:
-                        view = PaginationView(pages)
-                        await interaction.response.send_message(pages[0], view=view, ephemeral=True)
-                    else:
-                        await interaction.response.send_message(pages[0], ephemeral=True)
+                    view = BusinessView(business_data, business_name)
+                    embed = view.get_embed()
+                    await interaction.response.send_message(embed=embed, view=view)
                 else:
                     await interaction.response.send_message(f"No business data found for: {business_name}", ephemeral=True)
             else:
