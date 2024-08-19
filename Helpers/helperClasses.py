@@ -230,10 +230,10 @@ class UserPersonaView(View):
         self.current_page = 0
         self.per_page = 1 
 
-        self.previous_button = Button(label="Previous", style=ButtonStyle.gray, disabled=True)
-        self.next_button = Button(label="Next", style=ButtonStyle.gray)
+        self.previous_button = Button(label="Previous", style=ButtonStyle.grey, disabled=True)
+        self.next_button = Button(label="Next", style=ButtonStyle.grey)
         self.add_button = Button(label="Add Persona", style=ButtonStyle.green)
-        self.edit_button = Button(label="Edit Persona", style=ButtonStyle.blue)
+        self.edit_button = Button(label="Edit Persona", style=ButtonStyle.primary)  # Changed from blue to primary
         self.delete_button = Button(label="Delete Persona", style=ButtonStyle.red)
         
         self.previous_button.callback = self.previous_callback
