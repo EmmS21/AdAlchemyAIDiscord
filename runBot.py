@@ -138,7 +138,8 @@ async def on_message(message):
         business_name = message.content.lower()
         mappings_collection.update_one(
             {"user_id": user_id},
-            {"$set": {"business_name": business_name}}
+            {"$set": {"business_name": business_name}},
+            upsert=False  # Changed to False to prevent creating a new document
         )
         await message.channel.send(f"Please give me a link to your website {business_name}:")
         guild_states[guild_id] = "waiting_for_website"
@@ -156,7 +157,8 @@ async def on_message(message):
             website_link = message.content
             mappings_collection.update_one(
                 {"user_id": user_id},
-                {"$set": {"website_link": website_link}}
+                {"$set": {"website_link": website_link}},
+                upsert=False  # Changed to False to prevent creating a new document
             )
             await message.channel.send("We are currently running in beta, we are using this as an opportunity to discuss pricing that is commensurate to the value generated and your use cases.")
                        
