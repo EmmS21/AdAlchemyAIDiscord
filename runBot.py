@@ -33,6 +33,7 @@ async def sync_commands():
         print(f"Error syncing commands: {e}")
 
 async def check_onboarded_status(owner_id):
+    print('owner_id', owner_id)
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
     
