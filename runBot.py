@@ -245,7 +245,7 @@ async def business(interaction: discord.Interaction):
                         await interaction.response.send_message("No business information found.")
                         return
                     
-                    view = BusinessView(business_data, business_name)
+                    view = BusinessView(business_data)  # Removed business_name parameter
                     embed = view.get_embed()
                     await interaction.response.send_message(embed=embed, view=view)
                 else:
@@ -261,4 +261,5 @@ async def business(interaction: discord.Interaction):
             ephemeral=True
         )
         
+                
 client.run(os.getenv('DISCORD_TOKEN'))
