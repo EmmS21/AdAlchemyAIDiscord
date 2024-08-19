@@ -105,7 +105,7 @@ async def on_guild_join(guild):
         # New user logic, store data temporarily
         user_data[user_id] = {
             "guild_id": guild.id,
-            "owner_id": owner_id,
+            "owner_ids": [owner_id],  # Initialize as a list to store multiple owner_ids
             "webhook_url": webhook_url,
             "business_name": None,
             "website_link": None,
