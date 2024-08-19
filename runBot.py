@@ -89,7 +89,7 @@ async def on_guild_join(guild):
                     "$set": {"webhook_url": webhook_url},
                     "$addToSet": {"owner_ids": owner_id}
                 },
-                upsert=True
+                upsert=True  # Ensure we update or insert as necessary
             )
 
         for channel in guild.text_channels:
@@ -106,14 +106,19 @@ async def on_guild_join(guild):
         first_question = "What is the name of your business?"
         guild_onboarded_status[guild.id] = False
 
-        if webhook_url:
-            mappings_collection.insert_one({
-                "user_id": user_id,
-                "webhook_url": webhook_url,
-                "onboarded": False,
-                "owner_ids": [owner_id],
-                "business_name": None  # This will be updated later
-            })
+        # Use update_one with upsert=True instead of insert_one
+        mappings_collection.update_one(
+            {"user_id": user_id},
+            {
+                "$setOnInsert": {
+                    "webhook_url": webhook_url,
+                    "onboarded": False,
+                    "owner_ids": [owner_id],
+                    "business_name": None  # This will be updated later
+                }
+            },
+            upsert=True  
+        )
 
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
