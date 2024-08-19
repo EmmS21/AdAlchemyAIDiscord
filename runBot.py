@@ -12,6 +12,7 @@ from pathlib import Path
 dotenv.load_dotenv()
 guild_business_data = defaultdict(dict)
 guild_onboarded_status = {}
+user_data = {}
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -56,6 +57,7 @@ async def on_guild_join(guild):
     user_id = guild.owner.id  # Getting the user_id of the server owner
     owner_id = guild.owner_id
 
+    # Check if the user already has a record
     user_record = mappings_collection.find_one({"user_id": user_id})
 
     webhook_url = None
@@ -72,6 +74,7 @@ async def on_guild_join(guild):
                 print(f"Failed to create webhook in channel {channel.id}: {str(e)}")
 
     if user_record:
+        # Existing user logic
         business_name = user_record.get("business_name", "valued business")
         welcome_back_message = f"Welcome back {business_name}!"
         
@@ -82,14 +85,15 @@ async def on_guild_join(guild):
             calendly_message = "Please schedule a date to complete your onboarding and discuss your business needs: [Calendly Link](https://calendly.com/emmanuel-emmanuelsibanda/30min)"
             guild_onboarded_status[guild.id] = False
 
+        # Update only if the document exists
         if webhook_url:
             mappings_collection.update_one(
                 {"user_id": user_id},
                 {
                     "$set": {"webhook_url": webhook_url},
                     "$addToSet": {"owner_ids": owner_id}
-                },
-                upsert=True  # Ensure we update or insert as necessary
+                }
+                # No upsert=True here
             )
 
         for channel in guild.text_channels:
@@ -98,6 +102,16 @@ async def on_guild_join(guild):
                 await channel.send(calendly_message)
                 break
     else:
+        # New user logic, store data temporarily
+        user_data[user_id] = {
+            "guild_id": guild.id,
+            "owner_id": owner_id,
+            "webhook_url": webhook_url,
+            "business_name": None,
+            "website_link": None,
+            "onboarded": False
+        }
+
         welcome_message = """
         Hello! I am AdAlchemyAI, a bot to help you get good leads for a cost-effective price for your business by automating the process of setting up, running, and optimizing your Google Ads. I only run ads after you manually approve the keywords I researched, the ad text ideas I generate, and the information I use to carry out my research.
 
@@ -105,20 +119,6 @@ async def on_guild_join(guild):
         """
         first_question = "What is the name of your business?"
         guild_onboarded_status[guild.id] = False
-
-        # Use update_one with upsert=True instead of insert_one
-        mappings_collection.update_one(
-            {"user_id": user_id},
-            {
-                "$setOnInsert": {
-                    "webhook_url": webhook_url,
-                    "onboarded": False,
-                    "owner_ids": [owner_id],
-                    "business_name": None  # This will be updated later
-                }
-            },
-            upsert=True  
-        )
 
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
@@ -141,28 +141,16 @@ async def on_message(message):
 
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+    user_id = message.author.id
 
     if current_state == "waiting_for_business_name":
         business_name = message.content.lower()
-        onboarding_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "onboarding_agent", business_name)
-        
-        try:
-            collection_exists = onboarding_collection.estimated_document_count() > 0
-        except Exception as e:
-            collection_exists = False
 
-        if collection_exists:
-            await message.channel.send(f"'{business_name}' already exists, please select a unique business name.")
-            return
-        
-        guild_business_data[guild_id]['business_name'] = business_name
+        # Store business name in memory
+        if user_id not in user_data:
+            user_data[user_id] = {}  # Initialize if not already done
+        user_data[user_id]["business_name"] = business_name
 
-        # Update the existing record with the business name
-        mappings_collection.update_one(
-            {"user_id": message.author.id},
-            {"$set": {"business_name": business_name}}
-        )
-        
         await message.channel.send(f"Please give me a link to your website {business_name}:")
         guild_states[guild_id] = "waiting_for_website"
 
@@ -177,17 +165,15 @@ async def on_message(message):
 
         if re.match(url_pattern, message.content):
             website_link = message.content
-            onboarding_agent_db = connect_to_mongo_and_get_collection(CONNECTION_STRING, "onboarding_agent", None)
-            
-            if onboarding_agent_db and website_exists_in_db(onboarding_agent_db, website_link):
-                await message.channel.send(f"'{website_link}' already exists, please enter a unique website.")
-                return
 
-            guild_business_data[guild_id]['website_link'] = website_link
-            
-            await message.channel.send("We are currently running in beta, we are using this as an opportunity to discuss a pricing that is commensurate to the value generated and your use cases.")
+            # Store website link in memory
+            if user_id not in user_data:
+                user_data[user_id] = {}  # Initialize if not already done
+            user_data[user_id]["website_link"] = website_link
+
+            await message.channel.send("We are currently running in beta, we are using this as an opportunity to discuss pricing that is commensurate to the value generated and your use cases.")
                        
-            view = ConfirmPricing(guild_id, guild_business_data[guild_id]['business_name'], website_link)
+            view = ConfirmPricing(guild_id, user_data[user_id]['business_name'], website_link)
             await message.channel.send("Please confirm your interest in joining the AdAlchemyAI waiting list", view=view)
             guild_states[guild_id] = "waiting_for_consent"
         else:
