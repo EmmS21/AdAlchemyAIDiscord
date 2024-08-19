@@ -83,7 +83,11 @@ async def on_guild_join(guild):
         if webhook_url:
             mappings_collection.update_one(
                 {"owner_id": owner_id},
-                {"$set": {"webhook_url": webhook_url}}
+                {
+                    "$set": {"webhook_url": webhook_url},
+                    "$addToSet": {"server_ids": guild.id}
+                },
+                upsert=True
             )
 
         for channel in guild.text_channels:
@@ -104,7 +108,8 @@ async def on_guild_join(guild):
             mappings_collection.insert_one({
                 "owner_id": owner_id,
                 "webhook_url": webhook_url,
-                "onboarded": False
+                "onboarded": False,
+                "server_ids": [guild.id]
             })
 
         for channel in guild.text_channels:
