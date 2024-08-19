@@ -279,19 +279,20 @@ class UserPersonaView(View):
 
     def get_embed(self):
         if not self.personas:
-            return Embed(title="User Personas", description="No personas found. Add a new one!", color=discord.Color.blue())
+            return discord.Embed(title="User Personas", description="No personas found. Add a new one!", color=discord.Color.blue())
         
         persona = self.personas[self.current_page]
-        embed = Embed(title=f"{persona['title']}", color=discord.Color.blue())
+        embed = discord.Embed(title=f"User Persona {self.current_page + 1}", color=discord.Color.blue())
         
-        embed.add_field(name="Demographics", value=persona['demographics'], inline=False)
-        embed.add_field(name="Motivation", value=persona['motivation'], inline=False)
-        embed.add_field(name="Pain Points", value=persona['pain_points'], inline=False)
-        embed.add_field(name="Goals", value=persona['goals'], inline=False)
-        embed.add_field(name="Preferences", value=persona['preferences'], inline=False)
+        if isinstance(persona, dict):
+            for key, value in persona.items():
+                embed.add_field(name=key.capitalize(), value=value, inline=False)
+        else:
+            embed.add_field(name="Description", value=persona, inline=False)
         
         embed.set_footer(text=f"Persona {self.current_page + 1} of {len(self.personas)}")
         return embed
+
 
     async def add_persona(self, interaction: discord.Interaction, persona_data: dict):
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")

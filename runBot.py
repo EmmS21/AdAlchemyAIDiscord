@@ -321,6 +321,8 @@ async def user_personas(interaction: discord.Interaction):
                 
                 if document and 'user_persona' in document:
                     personas = document['user_persona']
+                    if isinstance(personas, str):
+                        personas = [personas]  # Convert single string to list
                     
                     view = UserPersonaView(personas, business_name)
                     embed = view.get_embed()
