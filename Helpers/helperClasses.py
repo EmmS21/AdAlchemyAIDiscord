@@ -134,3 +134,46 @@ class BusinessEditModal(Modal, title='Edit Business Information'):
                 await interaction.response.send_message(f"Failed to update business information.", ephemeral=True)
         else:
             await interaction.response.send_message("Unable to find your business. Please make sure you've completed the initial setup.", ephemeral=True)
+
+class ResearchPathsView(View):
+    def __init__(self, paths):
+        super().__init__()
+        self.paths = paths
+        self.current_page = 0
+        self.per_page = 5  # Number of paths per page
+        self.update_buttons()
+
+    def update_buttons(self):
+        self.clear_items()
+        
+        previous_button = Button(label="Previous", style=discord.ButtonStyle.gray, disabled=(self.current_page == 0))
+        previous_button.callback = self.previous_callback
+        self.add_item(previous_button)
+
+        next_button = Button(label="Next", style=discord.ButtonStyle.gray, disabled=(self.current_page >= (len(self.paths) - 1) // self.per_page))
+        next_button.callback = self.next_callback
+        self.add_item(next_button)
+
+    async def previous_callback(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        await self.update_message(interaction)
+
+    async def next_callback(self, interaction: discord.Interaction):
+        self.current_page = min((len(self.paths) - 1) // self.per_page, self.current_page + 1)
+        await self.update_message(interaction)
+
+    async def update_message(self, interaction):
+        embed = self.get_embed()
+        self.update_buttons()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    def get_embed(self):
+        start = self.current_page * self.per_page
+        end = start + self.per_page
+        current_paths = self.paths[start:end]
+
+        embed = discord.Embed(title="Research Paths", color=discord.Color.blue())
+        for i, path in enumerate(current_paths, start=start+1):
+            embed.add_field(name=f"Path {i}", value=path, inline=False)
+        embed.set_footer(text=f"Page {self.current_page + 1} of {(len(self.paths) - 1) // self.per_page + 1}")
+        return embed
