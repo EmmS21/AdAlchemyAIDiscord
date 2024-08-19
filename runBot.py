@@ -238,9 +238,9 @@ async def business(interaction: discord.Interaction):
             if business_collection is not None:
                 latest_document = business_collection.find_one(sort=[("_id", -1)])
                 
-                if latest_document:
-                    formatted_data = "\n".join([f"{key}: {value}" for key, value in latest_document.items() if key != "_id"])
-                    pages = create_paginated_embed(f"Here's the latest information for your business:\n\n{formatted_data}")
+                if latest_document and 'business' in latest_document:
+                    business_data = latest_document['business']
+                    pages = create_paginated_embed({business_data})
                     
                     if len(pages) > 1:
                         view = PaginationView(pages)
