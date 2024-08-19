@@ -135,32 +135,76 @@ class BusinessEditModal(Modal, title='Edit Business Information'):
         else:
             await interaction.response.send_message("Unable to find your business. Please make sure you've completed the initial setup.", ephemeral=True)
 
+from discord import ButtonStyle, Embed, TextStyle
+from discord.ui import View, Button, Modal, TextInput
+from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
+import os
+
+class AddPathModal(Modal, title='Add New Research Path'):
+    def __init__(self, callback):
+        super().__init__()
+        self.callback = callback
+        self.path = TextInput(label='New Research Path', style=TextStyle.paragraph, placeholder='Enter the new research path here...', required=True, max_length=1000)
+        self.add_item(self.path)
+
+    async def on_submit(self, interaction):
+        await self.callback(interaction, self.path.value)
+
 class ResearchPathsView(View):
-    def __init__(self, paths):
+    def __init__(self, paths, business_name):
         super().__init__()
         self.paths = paths
+        self.business_name = business_name
         self.current_page = 0
-        self.per_page = 5  # Number of paths per page
+        self.per_page = 5
         self.update_buttons()
 
     def update_buttons(self):
         self.clear_items()
         
-        previous_button = Button(label="Previous", style=discord.ButtonStyle.gray, disabled=(self.current_page == 0))
+        previous_button = Button(label="Previous", style=ButtonStyle.gray, disabled=(self.current_page == 0))
         previous_button.callback = self.previous_callback
         self.add_item(previous_button)
 
-        next_button = Button(label="Next", style=discord.ButtonStyle.gray, disabled=(self.current_page >= (len(self.paths) - 1) // self.per_page))
+        next_button = Button(label="Next", style=ButtonStyle.gray, disabled=(self.current_page >= (len(self.paths) - 1) // self.per_page))
         next_button.callback = self.next_callback
         self.add_item(next_button)
 
-    async def previous_callback(self, interaction: discord.Interaction):
+        add_button = Button(label="Add Path", style=ButtonStyle.green)
+        add_button.callback = self.add_path_callback
+        self.add_item(add_button)
+
+    async def previous_callback(self, interaction):
         self.current_page = max(0, self.current_page - 1)
         await self.update_message(interaction)
 
-    async def next_callback(self, interaction: discord.Interaction):
+    async def next_callback(self, interaction):
         self.current_page = min((len(self.paths) - 1) // self.per_page, self.current_page + 1)
         await self.update_message(interaction)
+
+    async def add_path_callback(self, interaction):
+        modal = AddPathModal(self.add_path)
+        await interaction.response.send_modal(modal)
+
+    async def add_path(self, interaction, new_path):
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", self.business_name.lower())
+        
+        if business_collection:
+            result = business_collection.update_one(
+                {},
+                {"$push": {"list_of_paths_taken": new_path}},
+                upsert=True
+            )
+            
+            if result.modified_count > 0 or result.upserted_id:
+                self.paths.append(new_path)
+                await interaction.response.send_message("New research path added successfully!", ephemeral=True)
+                await self.update_message(interaction)
+            else:
+                await interaction.response.send_message("Failed to add new research path.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Failed to connect to the database.", ephemeral=True)
 
     async def update_message(self, interaction):
         embed = self.get_embed()
@@ -172,7 +216,7 @@ class ResearchPathsView(View):
         end = start + self.per_page
         current_paths = self.paths[start:end]
 
-        embed = discord.Embed(title="Research Paths", color=discord.Color.blue())
+        embed = Embed(title="Research Paths", color=discord.Color.blue())
         for i, path in enumerate(current_paths, start=start+1):
             embed.add_field(name=f"Path {i}", value=path, inline=False)
         embed.set_footer(text=f"Page {self.current_page + 1} of {(len(self.paths) - 1) // self.per_page + 1}")

@@ -2,7 +2,7 @@ from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
 from Helpers.helperfuncs import website_exists_in_db
 from Helpers.helperClasses import ConfirmPricing, BusinessView, ResearchPathsView
 import discord
-from discord import app_commands
+from discord import app_commands, Embed
 import os
 import dotenv
 from collections import defaultdict
@@ -260,7 +260,7 @@ async def business(interaction: discord.Interaction):
             ephemeral=True
         )
 
-@tree.command(name="research_paths", description="View the research paths taken for your business")
+@tree.command(name="research_paths", description="View and add research paths for your business")
 async def research_paths(interaction: discord.Interaction):
     user_id = interaction.user.id
     is_onboarded = await check_onboarded_status(user_id)
@@ -281,14 +281,16 @@ async def research_paths(interaction: discord.Interaction):
                     paths = document['list_of_paths_taken']
                     
                     if not paths:
-                        await interaction.response.send_message("No research paths found for your business.")
+                        await interaction.response.send_message("No research paths found for your business. Use the 'Add Path' button to add one.")
                         return
                     
-                    view = ResearchPathsView(paths)
+                    view = ResearchPathsView(paths, business_name)
                     embed = view.get_embed()
                     await interaction.response.send_message(embed=embed, view=view)
                 else:
-                    await interaction.response.send_message(f"No research paths found for: {business_name}", ephemeral=True)
+                    view = ResearchPathsView([], business_name)
+                    embed = Embed(title="Research Paths", description="No research paths found. Use the 'Add Path' button to add one.", color=discord.Color.blue())
+                    await interaction.response.send_message(embed=embed, view=view)
             else:
                 await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
         else:
@@ -299,7 +301,5 @@ async def research_paths(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
-
-
 
 client.run(os.getenv('DISCORD_TOKEN'))
