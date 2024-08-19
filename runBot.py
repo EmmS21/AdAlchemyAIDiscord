@@ -1,7 +1,6 @@
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
 from Helpers.helperfuncs import website_exists_in_db
-from Helpers.helperClasses import ConfirmPricing, BusinessEditModal, BusinessView
-from Helpers.pagination import create_paginated_embed, PaginationView
+from Helpers.helperClasses import ConfirmPricing, BusinessView, ResearchPathsView
 import discord
 from discord import app_commands
 import os
@@ -260,6 +259,47 @@ async def business(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
+
+@tree.command(name="research_paths", description="View the research paths taken for your business")
+async def research_paths(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    is_onboarded = await check_onboarded_status(user_id)
+    
+    if is_onboarded:
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+        user_record = mappings_collection.find_one({"owner_ids": user_id})
         
+        if user_record and "business_name" in user_record:
+            business_name = user_record["business_name"]
+            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
+            
+            if business_collection is not None:
+                document = business_collection.find_one()
                 
+                if document and 'list_of_paths_taken' in document:
+                    paths = document['list_of_paths_taken']
+                    
+                    if not paths:
+                        await interaction.response.send_message("No research paths found for your business.")
+                        return
+                    
+                    view = ResearchPathsView(paths)
+                    embed = view.get_embed()
+                    await interaction.response.send_message(embed=embed, view=view)
+                else:
+                    await interaction.response.send_message(f"No research paths found for: {business_name}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
+        else:
+            await interaction.response.send_message("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
+    else:
+        calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
+        await interaction.response.send_message(
+            f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
+            ephemeral=True
+        )
+
+
+
 client.run(os.getenv('DISCORD_TOKEN'))
