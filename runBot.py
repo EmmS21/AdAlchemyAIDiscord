@@ -194,6 +194,7 @@ async def help_command(interaction: discord.Interaction):
 
 @tree.command(name="business", description="Access business information")
 async def business(interaction: discord.Interaction):
+    print('accessed')
     is_onboarded = await check_onboarded_status(interaction.guild_id)
     
     if is_onboarded:
