@@ -33,7 +33,6 @@ async def sync_commands():
         print(f"Error syncing commands: {e}")
 
 async def check_onboarded_status(owner_id):
-    print('owner', owner_id)
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
     
@@ -57,16 +56,35 @@ async def on_guild_join(guild):
     owner_id = guild.owner_id
     owner_record = mappings_collection.find_one({"owner_id": owner_id})
 
+    webhook_url = None
+    for channel in guild.text_channels:
+        if channel.permissions_for(guild.me).manage_webhooks:
+            try:
+                webhook = await channel.create_webhook(name="AdAlchemyAI Notifications")
+                webhook_url = webhook.url
+                print(f"Created webhook for guild {guild.id}")
+                break
+            except discord.errors.Forbidden:
+                print(f"Failed to create webhook in channel {channel.id} due to permissions")
+            except Exception as e:
+                print(f"Failed to create webhook in channel {channel.id}: {str(e)}")
+
     if owner_record:
         business_name = owner_record.get("business_name", "valued business")
         welcome_back_message = f"Welcome back {business_name}!"
         
-        if owner_record.get("onboarded") == True:  # Explicitly check if onboarded is True
+        if owner_record.get("onboarded") == True:  
             calendly_message = "You have full access to all commands. Type / to see available commands."
             guild_onboarded_status[guild.id] = True
         else:
             calendly_message = "Please schedule a date to complete your onboarding and discuss your business needs: [Calendly Link](https://calendly.com/emmanuel-emmanuelsibanda/30min)"
             guild_onboarded_status[guild.id] = False
+
+        if webhook_url:
+            mappings_collection.update_one(
+                {"owner_id": owner_id},
+                {"$set": {"webhook_url": webhook_url}}
+            )
 
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
@@ -80,6 +98,15 @@ async def on_guild_join(guild):
         But for now I would like to learn more about you and your business.
         """
         first_question = "What is the name of your business?"
+        guild_onboarded_status[guild.id] = False
+
+        if webhook_url:
+            mappings_collection.insert_one({
+                "owner_id": owner_id,
+                "webhook_url": webhook_url,
+                "onboarded": False
+            })
+
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
                 try:
