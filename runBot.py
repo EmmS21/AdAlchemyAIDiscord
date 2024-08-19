@@ -235,27 +235,34 @@ async def business(interaction: discord.Interaction):
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
             
-            # Perform a case-insensitive search for the business name
-            business_data = marketing_agent_collection.find_one(
-                {"business_name": {"$regex": f"^{re.escape(business_name)}$", "$options": "i"}},
-                sort=[("_id", -1)]  # Sort by _id in descending order to get the latest document
-            )
+            # Get all collection names in the database
+            collection_names = db.list_collection_names()
             
-            if business_data:
-                # Format the business data for display
-                formatted_data = "\n".join([f"{key}: {value}" for key, value in business_data.items() if key != "_id"])
-                await interaction.response.send_message(f"Here's the latest information for your business:\n\n{formatted_data}", ephemeral=True)
+            # Find a case-insensitive match for the business name
+            matching_collection = next((name for name in collection_names if name.lower() == business_name.lower()), None)
+            
+            if matching_collection:
+                # Use the matched collection name to get the data
+                business_collection = db[matching_collection]
+                
+                # Get the latest document from the collection
+                latest_document = business_collection.find_one(sort=[("_id", -1)])
+                
+                if latest_document:
+                    # Format the business data for display
+                    formatted_data = "\n".join([f"{key}: {value}" for key, value in latest_document.items() if key != "_id"])
+                    await interaction.response.send_message(f"Here's the latest information for your business:\n\n{formatted_data}", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"No data found in the collection for the business: {business_name}", ephemeral=True)
             else:
-                await interaction.response.send_message(f"No data found for the business: {business_name}", ephemeral=True)
+                await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
         else:
             await interaction.response.send_message("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
-
     else:
         calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
         await interaction.response.send_message(
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
-
 
 client.run(os.getenv('DISCORD_TOKEN'))
