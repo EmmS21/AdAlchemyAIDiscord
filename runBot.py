@@ -38,8 +38,8 @@ async def check_onboarded_status(owner_id):
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
     
-    owner_record = mappings_collection.find_one({"owner_id": owner_id})
-    print('gulid', owner_record)
+    owner_record = mappings_collection.find_one({"owner_ids": owner_id})
+    print('guild', owner_record)
     if owner_record and owner_record.get("onboarded") == True:
         return True
     return False
@@ -54,8 +54,7 @@ async def on_guild_join(guild):
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
 
-    user_id = guild.owner.id
-    owner_id = guild.owner_id
+    owner_id = guild.owner.id
 
     # Create webhook
     webhook_url = None
@@ -68,8 +67,8 @@ async def on_guild_join(guild):
             except Exception as e:
                 print(f"Failed to create webhook in channel {channel.id}: {str(e)}")
 
-    # Check if the user already has a record
-    user_record = mappings_collection.find_one({"user_id": user_id})
+    # Check if the owner already has a record
+    user_record = mappings_collection.find_one({"owner_ids": owner_id})
 
     if user_record:
         # Update existing user
@@ -77,7 +76,7 @@ async def on_guild_join(guild):
             "$addToSet": {"owner_ids": owner_id},
             "$set": {"webhook_url": webhook_url}
         }
-        mappings_collection.update_one({"user_id": user_id}, update_data)
+        mappings_collection.update_one({"_id": user_record["_id"]}, update_data)
 
         business_name = user_record.get("business_name", "valued business")
         welcome_back_message = f"Welcome back {business_name}!"
@@ -97,7 +96,6 @@ async def on_guild_join(guild):
     else:
         # New user
         new_user_data = {
-            "user_id": user_id,
             "owner_ids": [owner_id],
             "webhook_url": webhook_url,
             "business_name": None,
@@ -132,14 +130,19 @@ async def on_message(message):
 
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
-    user_id = message.author.id
+    
+    # Use owner_ids to find the user record
+    user_record = mappings_collection.find_one({"owner_ids": message.guild.owner.id})
+    
+    if not user_record:
+        print(f"No document found for owner_id: {message.guild.owner.id}. Skipping update.")
+        return
 
     if current_state == "waiting_for_business_name":
         business_name = message.content.lower()
         mappings_collection.update_one(
-            {"user_id": user_id},
-            {"$set": {"business_name": business_name}},
-            upsert=False  # Changed to False to prevent creating a new document
+            {"_id": user_record["_id"]},
+            {"$set": {"business_name": business_name}}
         )
         await message.channel.send(f"Please give me a link to your website {business_name}:")
         guild_states[guild_id] = "waiting_for_website"
@@ -156,13 +159,12 @@ async def on_message(message):
         if re.match(url_pattern, message.content):
             website_link = message.content
             mappings_collection.update_one(
-                {"user_id": user_id},
-                {"$set": {"website_link": website_link}},
-                upsert=False  # Changed to False to prevent creating a new document
+                {"_id": user_record["_id"]},
+                {"$set": {"website_link": website_link}}
             )
             await message.channel.send("We are currently running in beta, we are using this as an opportunity to discuss pricing that is commensurate to the value generated and your use cases.")
                        
-            user_record = mappings_collection.find_one({"user_id": user_id})
+            user_record = mappings_collection.find_one({"_id": user_record["_id"]})
             business_name = user_record.get("business_name", "your business")
             view = ConfirmPricing(guild_id, business_name, website_link)
             await message.channel.send("Please confirm your interest in joining the AdAlchemyAI waiting list", view=view)
