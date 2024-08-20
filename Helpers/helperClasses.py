@@ -530,11 +530,12 @@ class AdTextView(View):
             description = self.descriptions[self.current_page]
             
             finalized_ad = next((fad for fad in self.finalized_ad_texts if fad.get('index') == self.current_page), None)
+            is_finalized = finalized_ad is not None
             if finalized_ad:
                 headline = finalized_ad['headline']
                 description = finalized_ad['description']
             
-            modal = AdEditModal(headline, description, self.current_page, self.collection, self)
+            modal = AdEditModal(headline, description, self.current_page, self.collection, self, is_finalized)
             await interaction.response.send_modal(modal)
         except Exception as e:
             await interaction.response.send_message(f"An error occurred while opening the edit modal: {str(e)}", ephemeral=True)
@@ -563,13 +564,14 @@ class AdTextView(View):
         embed.add_field(name="Description", value=description, inline=False)
         embed.set_footer(text=f"Ad {self.current_page + 1} of {self.total_ads}")
         return embed
-
+    
 class AdEditModal(Modal):
-    def __init__(self, headline, description, index, collection, view):
+    def __init__(self, headline, description, index, collection, view, is_finalized=False):
         super().__init__(title='Edit Ad Text')
         self.index = index
         self.collection = collection
         self.view = view
+        self.is_finalized = is_finalized
 
         self.warning = TextInput(
             label='Warning (do not edit)',
@@ -580,7 +582,7 @@ class AdEditModal(Modal):
         )
 
         self.headline = TextInput(
-            label='Headline (recommended max 30 characters)',
+            label=f'Headline {"(Finalized)" if is_finalized else ""} (recommended max 30 characters)',
             style=TextStyle.short,
             default=headline,
             required=True,
@@ -588,7 +590,7 @@ class AdEditModal(Modal):
         )
 
         self.description = TextInput(
-            label='Description (recommended max 90 characters)',
+            label=f'Description {"(Finalized)" if is_finalized else ""} (recommended max 90 characters)',
             style=TextStyle.paragraph,
             default=description,
             required=True,
@@ -641,12 +643,22 @@ class AdEditModal(Modal):
                     self.view.finalized_ad_texts.append(new_finalized_ad)
                     
                     embed = self.view.get_embed()
-                    await interaction.edit_original_message(embed=embed, view=self.view)
-                    await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
+                    await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
+                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the database successfully!", ephemeral=True)
                 else:
                     await interaction.followup.send("No changes were made to the database.", ephemeral=True)
             else:
-                await interaction.followup.send("No document found in the database.", ephemeral=True)
+                new_document = {
+                    "finalized_ad_text": [new_finalized_ad]
+                }
+                result = self.collection.insert_one(new_document)
+                if result.inserted_id:
+                    self.view.finalized_ad_texts.append(new_finalized_ad)
+                    embed = self.view.get_embed()
+                    await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
+                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"Failed to save ad to the database.", ephemeral=True)
 
         except Exception as e:
             await interaction.followup.send(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
