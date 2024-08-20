@@ -470,7 +470,7 @@ class KeywordPaginationView(discord.ui.View):
         for keyword in current_keywords:
             if isinstance(keyword, dict) and 'text' in keyword:
                 status = "✅" if keyword['text'] in self.selected_keywords else "❌"
-                value = f"Avg. Monthly Searches: {keyword.get('search_volume', 'N/A')}\nCompetition: {keyword.get('competition', 'N/A')}"
+                value = f"Avg. Monthly Searches: {keyword.get('avg_monthly_searches', 'N/A')}\nCompetition: {keyword.get('competition', 'N/A')}"
                 embed.add_field(name=f"{keyword['text']} [{status}]", value=value, inline=False)
             elif isinstance(keyword, str):
                 status = "✅" if keyword in self.selected_keywords else "❌"
