@@ -1,5 +1,5 @@
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
-from Helpers.helperfuncs import website_exists_in_db
+from Helpers.helperfuncs import website_exists_in_db, get_latest_document
 from Helpers.helperClasses import ConfirmPricing, BusinessView, ResearchPathsView, UserPersonaView, KeywordPaginationView, AdTextView
 import discord
 from discord import app_commands, Embed
@@ -233,20 +233,20 @@ async def business(interaction: discord.Interaction):
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
             
             if business_collection is not None:
-                document = business_collection.find_one()
+                latest_document = get_latest_document(business_collection)
                 
-                if document and 'business' in document:
-                    business_data = document['business']
+                if latest_document and 'business' in latest_document:
+                    business_data = latest_document['business']
                     
                     if not business_data:
-                        await interaction.response.send_message("No business information found.")
+                        await interaction.response.send_message("No business information found in the latest document.")
                         return
                     
-                    view = BusinessView(business_data)  # Removed business_name parameter
+                    view = BusinessView(business_data)
                     embed = view.get_embed()
                     await interaction.response.send_message(embed=embed, view=view)
                 else:
-                    await interaction.response.send_message(f"No business data found for: {business_name}", ephemeral=True)
+                    await interaction.response.send_message(f"No business data found for: {business_name} in the latest document", ephemeral=True)
             else:
                 await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
         else:
@@ -273,13 +273,13 @@ async def research_paths(interaction: discord.Interaction):
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
             
             if business_collection is not None:
-                document = business_collection.find_one()
+                latest_document = get_latest_document(business_collection)
                 
-                if document and 'list_of_paths_taken' in document:
-                    paths = document['list_of_paths_taken']
+                if latest_document and 'list_of_paths_taken' in latest_document:
+                    paths = latest_document['list_of_paths_taken']
                     
                     if not paths:
-                        await interaction.response.send_message("No research paths found for your business. Use the 'Add Path' button to add one.")
+                        await interaction.response.send_message("No research paths found for your business in the latest document. Use the 'Add Path' button to add one.")
                         return
                     
                     view = ResearchPathsView(paths, business_name)
@@ -287,7 +287,7 @@ async def research_paths(interaction: discord.Interaction):
                     await interaction.response.send_message(embed=embed, view=view)
                 else:
                     view = ResearchPathsView([], business_name)
-                    embed = Embed(title="Research Paths", description="No research paths found. Use the 'Add Path' button to add one.", color=discord.Color.blue())
+                    embed = Embed(title="Research Paths", description="No research paths found in the latest document. Use the 'Add Path' button to add one.", color=discord.Color.blue())
                     await interaction.response.send_message(embed=embed, view=view)
             else:
                 await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
@@ -315,10 +315,10 @@ async def user_personas(interaction: discord.Interaction):
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
             
             if business_collection is not None:
-                document = business_collection.find_one()
+                latest_document = get_latest_document(business_collection)
                 
-                if document and 'user_persona' in document:
-                    personas = document['user_persona']
+                if latest_document and 'user_persona' in latest_document:
+                    personas = latest_document['user_persona']
                     if isinstance(personas, str):
                         personas = [personas]  # Convert single string to list
                     
@@ -327,7 +327,7 @@ async def user_personas(interaction: discord.Interaction):
                     await interaction.response.send_message(embed=embed, view=view)
                 else:
                     view = UserPersonaView([], business_name)
-                    embed = discord.Embed(title="User Personas", description="No user personas found. Add a new one!", color=discord.Color.blue())
+                    embed = discord.Embed(title="User Personas", description="No user personas found in the latest document. Add a new one!", color=discord.Color.blue())
                     await interaction.response.send_message(embed=embed, view=view)
             else:
                 await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
@@ -354,16 +354,17 @@ async def keywords(interaction: discord.Interaction):
             business_name = user_record["business_name"]
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name)
             if business_collection is not None:
-                document = business_collection.find_one()                
-                if document:
-                    if 'selected_keywords' in document and document['selected_keywords']:
-                        keywords_to_display = [{'text': kw} for kw in document['selected_keywords']]
+                latest_document = get_latest_document(business_collection)
+                
+                if latest_document:
+                    if 'selected_keywords' in latest_document and latest_document['selected_keywords']:
+                        keywords_to_display = [{'text': kw} for kw in latest_document['selected_keywords']]
                         title = "Previously Selected Keywords"
-                    elif 'list_of_keywords' in document:
-                        keywords_to_display = document['list_of_keywords']
+                    elif 'list_of_keywords' in latest_document:
+                        keywords_to_display = latest_document['list_of_keywords']
                         title = "Available Keywords"
                     else:
-                        await interaction.response.send_message("No keywords found for your business.", ephemeral=True)
+                        await interaction.response.send_message("No keywords found for your business in the latest document.", ephemeral=True)
                         return
 
                     view = KeywordPaginationView(keywords_to_display, business_collection, title)
@@ -397,17 +398,17 @@ async def adtext(interaction: discord.Interaction):
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
             
             if business_collection is not None:
-                document = business_collection.find_one()
+                latest_document = get_latest_document(business_collection)
                 
-                if document and 'list_of_ad_text' in document:
-                    ad_variations = document['list_of_ad_text']
-                    finalized_ad_texts = document.get('finalized_ad_text', [])
+                if latest_document and 'list_of_ad_text' in latest_document:
+                    ad_variations = latest_document['list_of_ad_text']
+                    finalized_ad_texts = latest_document.get('finalized_ad_text', [])
                     
                     view = AdTextView(ad_variations, finalized_ad_texts, business_collection)
                     embed = view.get_embed()
                     await interaction.response.send_message(embed=embed, view=view)
                 else:
-                    await interaction.response.send_message("No ad variations found for your business.", ephemeral=True)
+                    await interaction.response.send_message("No ad variations found for your business in the latest document.", ephemeral=True)
             else:
                 await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
         else:
