@@ -403,10 +403,6 @@ async def adtext(interaction: discord.Interaction):
                     ad_variations = document['list_of_ad_text']
                     finalized_ad_texts = document.get('finalized_ad_text', [])
                     
-                    for i, fad in enumerate(finalized_ad_texts):
-                        if 'index' not in fad:
-                            fad['index'] = i
-                    
                     view = AdTextView(ad_variations, finalized_ad_texts, business_collection)
                     embed = view.get_embed()
                     await interaction.response.send_message(embed=embed, view=view)

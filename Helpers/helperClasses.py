@@ -484,14 +484,20 @@ class KeywordPaginationView(discord.ui.View):
             return False
         return True
     
+# In Helpers/helperClasses.py
+
+from discord import Embed, Button, ButtonStyle
+from discord.ui import View
+
 class AdTextView(View):
     def __init__(self, ad_variations, finalized_ad_texts, collection):
         super().__init__()
-        self.ad_variations = ad_variations
+        self.headlines = ad_variations['headlines']
+        self.descriptions = ad_variations['descriptions']
         self.finalized_ad_texts = finalized_ad_texts
         self.collection = collection
         self.current_page = 0
-        self.per_page = 1
+        self.total_ads = min(len(self.headlines), len(self.descriptions))
         
         self.previous_button = Button(label="Previous", style=ButtonStyle.gray, disabled=True)
         self.next_button = Button(label="Next", style=ButtonStyle.gray)
@@ -510,32 +516,29 @@ class AdTextView(View):
         await self.update_message(interaction)
 
     async def next_callback(self, interaction: discord.Interaction):
-        self.current_page = min(len(self.ad_variations) - 1, self.current_page + 1)
+        self.current_page = min(self.total_ads - 1, self.current_page + 1)
         await self.update_message(interaction)
 
     async def edit_callback(self, interaction: discord.Interaction):
-        ad = self.ad_variations[self.current_page]
-        finalized_ad = next((fad for fad in self.finalized_ad_texts if fad.get('index') == self.current_page), None)
+        headline = self.headlines[self.current_page]
+        description = self.descriptions[self.current_page]
         
+        finalized_ad = next((fad for fad in self.finalized_ad_texts if fad.get('index') == self.current_page), None)
         if finalized_ad:
             headline = finalized_ad['headline']
             description = finalized_ad['description']
-        else:
-            headline = ad['headline']
-            description = ad['description']
         
         modal = AdEditModal(headline, description, self.current_page, self.collection, self)
         await interaction.response.send_modal(modal)
 
     async def update_message(self, interaction):
         self.previous_button.disabled = (self.current_page == 0)
-        self.next_button.disabled = (self.current_page == len(self.ad_variations) - 1)
+        self.next_button.disabled = (self.current_page == self.total_ads - 1)
         
         embed = self.get_embed()
         await interaction.response.edit_message(embed=embed, view=self)
 
     def get_embed(self):
-        ad = self.ad_variations[self.current_page]
         finalized_ad = next((fad for fad in self.finalized_ad_texts if fad['index'] == self.current_page), None)
         
         if finalized_ad:
@@ -544,13 +547,13 @@ class AdTextView(View):
             description = finalized_ad['description']
         else:
             title = f"Ad Variation {self.current_page + 1}"
-            headline = ad['headline']
-            description = ad['description']
+            headline = self.headlines[self.current_page]
+            description = self.descriptions[self.current_page]
 
         embed = Embed(title=title, color=discord.Color.blue())
         embed.add_field(name="Headline", value=headline, inline=False)
         embed.add_field(name="Description", value=description, inline=False)
-        embed.set_footer(text=f"Ad {self.current_page + 1} of {len(self.ad_variations)}")
+        embed.set_footer(text=f"Ad {self.current_page + 1} of {self.total_ads}")
         return embed
 
 class AdEditModal(Modal, title='Edit Ad Text'):
@@ -604,6 +607,19 @@ class AdEditModal(Modal, title='Edit Ad Text'):
             await interaction.response.send_message(f"Cannot submit. {warning_text}. Please edit and try again.", ephemeral=True)
             return
         
+        # Update the list_of_ad_text in the database
+        result = self.collection.update_one(
+            {},
+            {
+                "$set": {
+                    f"list_of_ad_text.headlines.{self.index}": self.headline.value,
+                    f"list_of_ad_text.descriptions.{self.index}": self.description.value
+                }
+            },
+            upsert=True
+        )
+
+        # Update or add to finalized_ad_text
         finalized_ad = {
             'index': self.index,
             'headline': self.headline.value,
@@ -612,17 +628,17 @@ class AdEditModal(Modal, title='Edit Ad Text'):
         
         result = self.collection.update_one(
             {},
-            {"$pull": {"finalized_ad_text": {"index": self.index}}},
-            upsert=True
-        )
-        
-        result = self.collection.update_one(
-            {},
-            {"$push": {"finalized_ad_text": finalized_ad}},
+            {
+                "$pull": {"finalized_ad_text": {"index": self.index}},
+                "$push": {"finalized_ad_text": finalized_ad}
+            },
             upsert=True
         )
 
         if result.modified_count > 0 or result.upserted_id:
+            # Update the view
+            self.view.headlines[self.index] = self.headline.value
+            self.view.descriptions[self.index] = self.description.value
             self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
             self.view.finalized_ad_texts.append(finalized_ad)
             
