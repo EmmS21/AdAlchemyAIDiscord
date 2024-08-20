@@ -355,8 +355,9 @@ async def keywords(interaction: discord.Interaction):
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
+            print('business_name', business_name)
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
-            
+            print('biz-collection',business_collection)
             if business_collection is not None:
                 document = business_collection.find_one()
                 
