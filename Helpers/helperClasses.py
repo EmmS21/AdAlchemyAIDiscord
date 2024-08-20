@@ -525,16 +525,19 @@ class AdTextView(View):
         await self.update_message(interaction)
 
     async def edit_callback(self, interaction: discord.Interaction):
-        headline = self.headlines[self.current_page]
-        description = self.descriptions[self.current_page]
-        
-        finalized_ad = next((fad for fad in self.finalized_ad_texts if fad.get('index') == self.current_page), None)
-        if finalized_ad:
-            headline = finalized_ad['headline']
-            description = finalized_ad['description']
-        
-        modal = AdEditModal(headline, description, self.current_page, self.collection, self, is_finalized=bool(finalized_ad))
-        await interaction.response.send_modal(modal)
+        try:
+            headline = self.headlines[self.current_page]
+            description = self.descriptions[self.current_page]
+            
+            finalized_ad = next((fad for fad in self.finalized_ad_texts if fad.get('index') == self.current_page), None)
+            if finalized_ad:
+                headline = finalized_ad['headline']
+                description = finalized_ad['description']
+            
+            modal = AdEditModal(headline, description, self.current_page, self.collection, self)
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            await interaction.response.send_message(f"An error occurred while opening the edit modal: {str(e)}", ephemeral=True)
 
     async def update_message(self, interaction):
         self.previous_button.disabled = (self.current_page == 0)
@@ -562,32 +565,47 @@ class AdTextView(View):
         return embed
 
 class AdEditModal(Modal):
-    def __init__(self, headline, description, index, collection, view, is_finalized=False):
+    def __init__(self, headline, description, index, collection, view):
         super().__init__(title='Edit Ad Text')
-        print('EditModal triggered')
         self.index = index
         self.collection = collection
         self.view = view
-        self.is_finalized = is_finalized
+
+        self.warning = TextInput(
+            label='Warning (do not edit)',
+            style=TextStyle.short,
+            default=self.get_warning_text(headline, description),
+            required=False,
+            max_length=100
+        )
 
         self.headline = TextInput(
-            label=f'Headline {"(Finalized)" if is_finalized else ""} (max 30 characters)',
+            label='Headline (recommended max 30 characters)',
             style=TextStyle.short,
             default=headline,
             required=True,
-            max_length=30
+            max_length=100  # Allow longer input, but warn about it
         )
 
         self.description = TextInput(
-            label=f'Description {"(Finalized)" if is_finalized else ""} (max 90 characters)',
+            label='Description (recommended max 90 characters)',
             style=TextStyle.paragraph,
             default=description,
             required=True,
-            max_length=90
+            max_length=200  # Allow longer input, but warn about it
         )
 
+        self.add_item(self.warning)
         self.add_item(self.headline)
         self.add_item(self.description)
+
+    def get_warning_text(self, headline, description):
+        warnings = []
+        if len(headline) > 30:
+            warnings.append(f"Headline exceeds limit by {len(headline) - 30} characters")
+        if len(description) > 90:
+            warnings.append(f"Description exceeds limit by {len(description) - 90} characters")
+        return " | ".join(warnings) if warnings else "No warnings"
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -595,11 +613,15 @@ class AdEditModal(Modal):
         new_headline = self.headline.value
         new_description = self.description.value
 
+        warning_text = self.get_warning_text(new_headline, new_description)
+        if warning_text != "No warnings":
+            await interaction.followup.send(f"Warning: {warning_text}. Changes will be saved, but may be truncated in some displays.", ephemeral=True)
+
         try:
             new_finalized_ad = {
                 'index': self.index,
-                'headline': new_headline,
-                'description': new_description
+                'headline': new_headline[:30],  # Truncate to 30 characters
+                'description': new_description[:90]  # Truncate to 90 characters
             }
 
             latest_document = get_latest_document(self.collection)
@@ -619,23 +641,12 @@ class AdEditModal(Modal):
                     self.view.finalized_ad_texts.append(new_finalized_ad)
                     
                     embed = self.view.get_embed()
-                    await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
-                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the latest document in the database successfully!", ephemeral=True)
+                    await interaction.edit_original_message(embed=embed, view=self.view)
+                    await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
                 else:
                     await interaction.followup.send("No changes were made to the database.", ephemeral=True)
             else:
-                new_document = {
-                    "finalized_ad_text": [new_finalized_ad],
-                    "list_of_ad_text": {
-                        "headlines": self.view.headlines,
-                        "descriptions": self.view.descriptions
-                    }
-                }
-                result = self.collection.insert_one(new_document)
-                if result.inserted_id:
-                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
-                else:
-                    await interaction.followup.send(f"Failed to save ad to the database.", ephemeral=True)
+                await interaction.followup.send("No document found in the database.", ephemeral=True)
 
         except Exception as e:
             await interaction.followup.send(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
