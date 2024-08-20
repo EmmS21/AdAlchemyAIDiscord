@@ -352,7 +352,7 @@ async def keywords(interaction: discord.Interaction):
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
-            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name)
+            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "judge_data", business_name)
             if business_collection is not None:
                 latest_document = get_latest_document(business_collection)
                 
@@ -360,8 +360,8 @@ async def keywords(interaction: discord.Interaction):
                     if 'selected_keywords' in latest_document and latest_document['selected_keywords']:
                         keywords_to_display = [{'text': kw} for kw in latest_document['selected_keywords']]
                         title = "Previously Selected Keywords"
-                    elif 'list_of_keywords' in latest_document:
-                        keywords_to_display = latest_document['list_of_keywords']
+                    elif 'keywords' in latest_document:
+                        keywords_to_display = latest_document['keywords']
                         title = "Available Keywords"
                     else:
                         await interaction.response.send_message("No keywords found for your business in the latest document.", ephemeral=True)
@@ -395,13 +395,13 @@ async def adtext(interaction: discord.Interaction):
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
-            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name.lower())
+            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "judge_data", business_name.lower())
             
             if business_collection is not None:
                 latest_document = get_latest_document(business_collection)
                 
-                if latest_document and 'list_of_ad_text' in latest_document:
-                    ad_variations = latest_document['list_of_ad_text']
+                if latest_document and 'ad_variations' in latest_document:
+                    ad_variations = latest_document['ad_variations']
                     finalized_ad_texts = latest_document.get('finalized_ad_text', [])
                     
                     view = AdTextView(ad_variations, finalized_ad_texts, business_collection)
