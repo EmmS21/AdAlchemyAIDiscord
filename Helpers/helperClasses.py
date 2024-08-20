@@ -589,45 +589,40 @@ class AdEditModal(Modal):
         self.add_item(self.description)
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
         new_headline = self.headline.value
         new_description = self.description.value
 
         try:
-            # Prepare the new finalized ad
             new_finalized_ad = {
                 'index': self.index,
                 'headline': new_headline,
                 'description': new_description
             }
 
-            # Fetch the current document
             latest_document = get_latest_document(self.collection)
 
             if latest_document:
                 if 'finalized_ad_text' not in latest_document or not isinstance(latest_document['finalized_ad_text'], list):
-                    # If finalized_ad_text doesn't exist or is not a list, set it to a list with the new ad
                     update = {"$set": {"finalized_ad_text": [new_finalized_ad]}}
                 else:
-                    # If it's a list, remove the old entry (if exists) and add the new one
                     existing_finalized_ads = [ad for ad in latest_document['finalized_ad_text'] if ad.get('index') != self.index]
                     existing_finalized_ads.append(new_finalized_ad)
                     update = {"$set": {"finalized_ad_text": existing_finalized_ads}}
 
-                # Perform the update on the last document
                 result = self.collection.update_one({'_id': latest_document['_id']}, update)
 
                 if result.modified_count > 0:
-                    # Update the view
                     self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
                     self.view.finalized_ad_texts.append(new_finalized_ad)
                     
                     embed = self.view.get_embed()
-                    await interaction.response.edit_message(embed=embed, view=self.view)
+                    await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
                     await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the latest document in the database successfully!", ephemeral=True)
                 else:
-                    await interaction.response.send_message("No changes were made to the database.", ephemeral=True)
+                    await interaction.followup.send("No changes were made to the database.", ephemeral=True)
             else:
-                # If no document exists, create a new one
                 new_document = {
                     "finalized_ad_text": [new_finalized_ad],
                     "list_of_ad_text": {
@@ -637,9 +632,9 @@ class AdEditModal(Modal):
                 }
                 result = self.collection.insert_one(new_document)
                 if result.inserted_id:
-                    await interaction.response.send_message(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
+                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
                 else:
-                    await interaction.response.send_message(f"Failed to save ad to the database.", ephemeral=True)
+                    await interaction.followup.send(f"Failed to save ad to the database.", ephemeral=True)
 
         except Exception as e:
-            await interaction.response.send_message(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
