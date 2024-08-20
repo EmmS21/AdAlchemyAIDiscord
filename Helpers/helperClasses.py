@@ -527,7 +527,7 @@ class AdTextView(View):
             headline = finalized_ad['headline']
             description = finalized_ad['description']
         
-        modal = AdEditModal(headline, description, self.current_page, self.collection, self)
+        modal = AdEditModal(headline, description, self.current_page, self.collection, self, is_finalized=bool(finalized_ad))
         await interaction.response.send_modal(modal)
 
     async def update_message(self, interaction):
@@ -556,67 +556,37 @@ class AdTextView(View):
         return embed
 
 class AdEditModal(Modal):
-    def __init__(self, headline, description, index, collection, view):
+    def __init__(self, headline, description, index, collection, view, is_finalized=False):
         super().__init__(title='Edit Ad Text')
         self.index = index
         self.collection = collection
         self.view = view
+        self.is_finalized = is_finalized
 
         self.headline = TextInput(
-            label='Headline (recommended max 30 characters)',
+            label=f'Headline {"(Finalized)" if is_finalized else ""} (max 30 characters)',
             style=TextStyle.short,
             default=headline,
             required=True,
-            max_length=100
+            max_length=30
         )
 
         self.description = TextInput(
-            label='Description (recommended max 90 characters)',
+            label=f'Description {"(Finalized)" if is_finalized else ""} (max 90 characters)',
             style=TextStyle.paragraph,
             default=description,
             required=True,
-            max_length=200
-        )
-
-        self.warning = TextInput(
-            label='Warning (do not edit)',
-            style=TextStyle.short,
-            default=self.get_warning_text(headline, description),
-            required=False
+            max_length=90
         )
 
         self.add_item(self.headline)
         self.add_item(self.description)
-        self.add_item(self.warning)
 
-    def get_warning_text(self, headline, description):
-        warnings = []
-        if len(headline) > 30:
-            warnings.append(f"Headline exceeds limit by {len(headline) - 30} characters")
-        if len(description) > 90:
-            warnings.append(f"Description exceeds limit by {len(description) - 90} characters")
-        return " | ".join(warnings) if warnings else "No warnings"
-
-async def on_submit(self, interaction: discord.Interaction):
-        new_headline = f"{self.headline.value} (Finalized)"
+    async def on_submit(self, interaction: discord.Interaction):
+        new_headline = self.headline.value
         new_description = self.description.value
 
-        warning_text = self.get_warning_text(new_headline, new_description)
-        if warning_text != "No warnings":
-            await interaction.response.send_message(f"Warning: {warning_text}. Changes will be saved, but may be truncated in some displays.", ephemeral=True)
-        else:
-            await interaction.response.defer()
-
         try:
-            # Fetch the current document
-            doc = self.collection.find_one({})
-
-            # Prepare the update for list_of_ad_text
-            list_of_ad_text_update = {
-                f"list_of_ad_text.headlines.{self.index}": new_headline,
-                f"list_of_ad_text.descriptions.{self.index}": new_description
-            }
-
             # Prepare the new finalized ad
             new_finalized_ad = {
                 'index': self.index,
@@ -624,34 +594,31 @@ async def on_submit(self, interaction: discord.Interaction):
                 'description': new_description
             }
 
-            # Prepare the update for finalized_ad_text
+            # Fetch the current document
+            doc = self.collection.find_one({})
+
             if 'finalized_ad_text' not in doc or not isinstance(doc['finalized_ad_text'], list):
                 # If finalized_ad_text doesn't exist or is not a list, set it to a list with the new ad
-                finalized_ad_text_update = {"finalized_ad_text": [new_finalized_ad]}
+                update = {"$set": {"finalized_ad_text": [new_finalized_ad]}}
             else:
                 # If it's a list, remove the old entry (if exists) and add the new one
                 existing_finalized_ads = [ad for ad in doc['finalized_ad_text'] if ad.get('index') != self.index]
                 existing_finalized_ads.append(new_finalized_ad)
-                finalized_ad_text_update = {"finalized_ad_text": existing_finalized_ads}
-
-            # Combine updates
-            update = {"$set": {**list_of_ad_text_update, **finalized_ad_text_update}}
+                update = {"$set": {"finalized_ad_text": existing_finalized_ads}}
 
             # Perform the update
             result = self.collection.update_one({}, update, upsert=True)
 
             if result.modified_count > 0 or result.upserted_id:
                 # Update the view
-                self.view.headlines[self.index] = new_headline
-                self.view.descriptions[self.index] = new_description
                 self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
                 self.view.finalized_ad_texts.append(new_finalized_ad)
                 
                 embed = self.view.get_embed()
-                await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
-                await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
+                await interaction.response.edit_message(embed=embed, view=self.view)
+                await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the database successfully!", ephemeral=True)
             else:
-                await interaction.followup.send("No changes were made to the database.", ephemeral=True)
+                await interaction.response.send_message("No changes were made to the database.", ephemeral=True)
 
         except Exception as e:
-            await interaction.followup.send(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
+            await interaction.response.send_message(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
