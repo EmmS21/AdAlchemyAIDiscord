@@ -1,5 +1,3 @@
-from pymongo import DESCENDING
-
 def website_exists_in_db(db, website_link):
     if db is None:
         raise ValueError("Database connection is not established.")
@@ -11,12 +9,16 @@ def website_exists_in_db(db, website_link):
 
 def get_latest_document(collection):
     """
-    Retrieves the most recent document from the given collection.
+    Retrieves the last inserted document from the given collection.
 
     Args:
     - collection: MongoDB collection object
 
     Returns:
-    - dict: The most recent document, or None if no documents exist
+    - dict: The last inserted document, or None if no documents exist
     """
-    return collection.find_one(sort=[("timestamp", DESCENDING)])
+    cursor = collection.find().sort('$natural', -1).limit(1)
+    try:
+        return next(cursor)
+    except StopIteration:
+        return None  
