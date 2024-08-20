@@ -34,12 +34,10 @@ async def sync_commands():
         print(f"Error syncing commands: {e}")
 
 async def check_onboarded_status(owner_id):
-    print('owner_id', owner_id)
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")
     mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
     
     owner_record = mappings_collection.find_one({"owner_ids": owner_id})
-    print('guild', owner_record)
     if owner_record and owner_record.get("onboarded") == True:
         return True
     return False
@@ -351,16 +349,12 @@ async def keywords(interaction: discord.Interaction):
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
         mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
         user_record = mappings_collection.find_one({"owner_ids": user_id})
-        print('user_record', user_record)
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
-            print('business_name', business_name)
             business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", business_name)
             if business_collection is not None:
-                document = business_collection.find_one()
-                print('document', document)
-                
+                document = business_collection.find_one()                
                 if document:
                     if 'selected_keywords' in document and document['selected_keywords']:
                         keywords_to_display = [{'text': kw} for kw in document['selected_keywords']]
@@ -405,8 +399,8 @@ async def adtext(interaction: discord.Interaction):
             if business_collection is not None:
                 document = business_collection.find_one()
                 
-                if document and 'ad_variations' in document:
-                    ad_variations = document['ad_variations']
+                if document and 'list_of_ad_text' in document:
+                    ad_variations = document['list_of_ad_text']
                     finalized_ad_texts = document.get('finalized_ad_text', [])
                     
                     for i, fad in enumerate(finalized_ad_texts):
