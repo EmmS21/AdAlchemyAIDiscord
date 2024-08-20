@@ -553,7 +553,7 @@ class AdTextView(View):
         embed.add_field(name="Description", value=description, inline=False)
         embed.set_footer(text=f"Ad {self.current_page + 1} of {self.total_ads}")
         return embed
-    
+
 class AdEditModal(Modal):
     def __init__(self, headline, description, index, collection, view):
         super().__init__(title='Edit Ad Text')
@@ -562,29 +562,48 @@ class AdEditModal(Modal):
         self.view = view
 
         self.headline = TextInput(
-            label='Headline (max 30 characters)',
+            label='Headline (recommended max 30 characters)',
             style=TextStyle.short,
             default=headline,
-            max_length=30,
-            required=True
+            required=True,
+            max_length=100
         )
 
         self.description = TextInput(
-            label='Description (max 90 characters)',
+            label='Description (recommended max 90 characters)',
             style=TextStyle.paragraph,
             default=description,
-            max_length=90,
-            required=True
+            required=True,
+            max_length=200
+        )
+
+        self.warning = TextInput(
+            label='Warning (do not edit)',
+            style=TextStyle.short,
+            default=self.get_warning_text(headline, description),
+            required=False
         )
 
         self.add_item(self.headline)
         self.add_item(self.description)
+        self.add_item(self.warning)
+
+    def get_warning_text(self, headline, description):
+        warnings = []
+        if len(headline) > 30:
+            warnings.append(f"Headline exceeds limit by {len(headline) - 30} characters")
+        if len(description) > 90:
+            warnings.append(f"Description exceeds limit by {len(description) - 90} characters")
+        return " | ".join(warnings) if warnings else "No warnings"
 
     async def on_submit(self, interaction: discord.Interaction):
         new_headline = self.headline.value
         new_description = self.description.value
 
-        # Update the list_of_ad_text in the database
+        warning_text = self.get_warning_text(new_headline, new_description)
+        if warning_text != "No warnings":
+            await interaction.response.send_message(f"Warning: {warning_text}. Changes will be saved, but may be truncated in some displays.", ephemeral=True)
+
         result = self.collection.update_one(
             {},
             {
@@ -596,7 +615,6 @@ class AdEditModal(Modal):
             upsert=True
         )
 
-        # Update or add to finalized_ad_text
         finalized_ad = {
             'index': self.index,
             'headline': new_headline,
@@ -613,14 +631,14 @@ class AdEditModal(Modal):
         )
 
         if result.modified_count > 0 or result.upserted_id:
-            # Update the view
             self.view.headlines[self.index] = new_headline
             self.view.descriptions[self.index] = new_description
             self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
             self.view.finalized_ad_texts.append(finalized_ad)
             
             embed = self.view.get_embed()
-            await interaction.response.edit_message(embed=embed, view=self.view)
-            await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
+            await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
+            if warning_text == "No warnings":
+                await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
         else:
-            await interaction.response.send_message(f"Ad {self.index + 1} updated, but failed to save to the database.", ephemeral=True)
+            await interaction.followup.send(f"Ad {self.index + 1} updated, but failed to save to the database.", ephemeral=True)
