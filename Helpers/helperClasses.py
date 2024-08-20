@@ -484,11 +484,6 @@ class KeywordPaginationView(discord.ui.View):
             return False
         return True
     
-# In Helpers/helperClasses.py
-
-from discord import Embed, Button, ButtonStyle
-from discord.ui import View
-
 class AdTextView(View):
     def __init__(self, ad_variations, finalized_ad_texts, collection):
         super().__init__()
@@ -499,9 +494,12 @@ class AdTextView(View):
         self.current_page = 0
         self.total_ads = min(len(self.headlines), len(self.descriptions))
         
-        self.previous_button = Button(label="Previous", style=ButtonStyle.gray, disabled=True)
-        self.next_button = Button(label="Next", style=ButtonStyle.gray)
-        self.edit_button = Button(label="Edit", style=ButtonStyle.primary)
+        self.previous_button = Button(style=ButtonStyle.gray, disabled=True)
+        self.previous_button.label = "Previous"
+        self.next_button = Button(style=ButtonStyle.gray)
+        self.next_button.label = "Next"
+        self.edit_button = Button(style=ButtonStyle.primary)
+        self.edit_button.label = "Edit"
         
         self.previous_button.callback = self.previous_callback
         self.next_button.callback = self.next_callback
@@ -555,65 +553,44 @@ class AdTextView(View):
         embed.add_field(name="Description", value=description, inline=False)
         embed.set_footer(text=f"Ad {self.current_page + 1} of {self.total_ads}")
         return embed
-
-class AdEditModal(Modal, title='Edit Ad Text'):
+    
+class AdEditModal(Modal):
     def __init__(self, headline, description, index, collection, view):
-        super().__init__()
+        super().__init__(title='Edit Ad Text')
         self.index = index
         self.collection = collection
         self.view = view
 
-        warning_text = self.get_warning_text(headline, description)
-
         self.headline = TextInput(
             label='Headline (max 30 characters)',
-            default=headline, 
             style=TextStyle.short,
-            required=True,
-            max_length=100  
+            default=headline,
+            max_length=30,
+            required=True
         )
+
         self.description = TextInput(
             label='Description (max 90 characters)',
-            default=description, 
             style=TextStyle.paragraph,
-            required=True,
-            max_length=200  
+            default=description,
+            max_length=90,
+            required=True
         )
-        
-        if warning_text != "No warnings":
-            self.warning = TextInput(
-                label='⚠️ Warning (do not edit this field)',
-                default=warning_text,
-                style=TextStyle.short,
-                required=False,
-                max_length=100
-            )
-            self.add_item(self.warning)
 
         self.add_item(self.headline)
         self.add_item(self.description)
 
-    def get_warning_text(self, headline, description):
-        warnings = []
-        if len(headline) > 30:
-            warnings.append(f"Headline exceeds limit by {len(headline) - 30} characters")
-        if len(description) > 90:
-            warnings.append(f"Description exceeds limit by {len(description) - 90} characters")
-        return " | ".join(warnings) if warnings else "No warnings"
-
     async def on_submit(self, interaction: discord.Interaction):
-        warning_text = self.get_warning_text(self.headline.value, self.description.value)        
-        if warning_text != "No warnings":
-            await interaction.response.send_message(f"Cannot submit. {warning_text}. Please edit and try again.", ephemeral=True)
-            return
-        
+        new_headline = self.headline.value
+        new_description = self.description.value
+
         # Update the list_of_ad_text in the database
         result = self.collection.update_one(
             {},
             {
                 "$set": {
-                    f"list_of_ad_text.headlines.{self.index}": self.headline.value,
-                    f"list_of_ad_text.descriptions.{self.index}": self.description.value
+                    f"list_of_ad_text.headlines.{self.index}": new_headline,
+                    f"list_of_ad_text.descriptions.{self.index}": new_description
                 }
             },
             upsert=True
@@ -622,8 +599,8 @@ class AdEditModal(Modal, title='Edit Ad Text'):
         # Update or add to finalized_ad_text
         finalized_ad = {
             'index': self.index,
-            'headline': self.headline.value,
-            'description': self.description.value
+            'headline': new_headline,
+            'description': new_description
         }
         
         result = self.collection.update_one(
@@ -637,8 +614,8 @@ class AdEditModal(Modal, title='Edit Ad Text'):
 
         if result.modified_count > 0 or result.upserted_id:
             # Update the view
-            self.view.headlines[self.index] = self.headline.value
-            self.view.descriptions[self.index] = self.description.value
+            self.view.headlines[self.index] = new_headline
+            self.view.descriptions[self.index] = new_description
             self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
             self.view.finalized_ad_texts.append(finalized_ad)
             
