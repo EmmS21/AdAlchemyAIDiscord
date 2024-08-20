@@ -3,6 +3,7 @@ from discord import ButtonStyle, Embed, TextStyle
 from discord.ui import Button, View, TextInput, Modal
 from collections import defaultdict
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
+from Helpers.helperfuncs import get_latest_document
 import os
 from pymongo.errors import WriteError
 
@@ -413,17 +414,22 @@ class KeywordPaginationView(discord.ui.View):
 
     async def submit_callback(self, interaction: discord.Interaction):
         selected_keywords_list = list(self.selected_keywords)
-
-        result = self.collection.update_one(
-            {},  
-            {"$set": {"selected_keywords": selected_keywords_list}},
-            upsert=True  
-        )
-        if result.modified_count > 0 or result.upserted_id:
-            await interaction.response.send_message(f"Selected keywords have been saved to the database.", ephemeral=True)
+        latest_document = get_latest_document(self.collection)
+        if latest_document:
+            result = self.collection.update_one(
+                {'_id': latest_document['_id']},
+                {"$set": {"selected_keywords": selected_keywords_list}}
+            )
+            if result.modified_count > 0:
+                await interaction.response.send_message(f"Selected keywords have been saved to the latest document in the database.", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"No changes were made to the database.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"Failed to save keywords to the database.", ephemeral=True)
-        
+            result = self.collection.insert_one({"selected_keywords": selected_keywords_list})
+            if result.inserted_id:
+                await interaction.response.send_message(f"Selected keywords have been saved to a new document in the database.", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Failed to save keywords to the database.", ephemeral=True)        
         self.stop()
     
     def add_toggle_buttons(self):
@@ -595,30 +601,45 @@ class AdEditModal(Modal):
             }
 
             # Fetch the current document
-            doc = self.collection.find_one({})
+            latest_document = get_latest_document(self.collection)
 
-            if 'finalized_ad_text' not in doc or not isinstance(doc['finalized_ad_text'], list):
-                # If finalized_ad_text doesn't exist or is not a list, set it to a list with the new ad
-                update = {"$set": {"finalized_ad_text": [new_finalized_ad]}}
+            if latest_document:
+                if 'finalized_ad_text' not in latest_document or not isinstance(latest_document['finalized_ad_text'], list):
+                    # If finalized_ad_text doesn't exist or is not a list, set it to a list with the new ad
+                    update = {"$set": {"finalized_ad_text": [new_finalized_ad]}}
+                else:
+                    # If it's a list, remove the old entry (if exists) and add the new one
+                    existing_finalized_ads = [ad for ad in latest_document['finalized_ad_text'] if ad.get('index') != self.index]
+                    existing_finalized_ads.append(new_finalized_ad)
+                    update = {"$set": {"finalized_ad_text": existing_finalized_ads}}
+
+                # Perform the update on the last document
+                result = self.collection.update_one({'_id': latest_document['_id']}, update)
+
+                if result.modified_count > 0:
+                    # Update the view
+                    self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
+                    self.view.finalized_ad_texts.append(new_finalized_ad)
+                    
+                    embed = self.view.get_embed()
+                    await interaction.response.edit_message(embed=embed, view=self.view)
+                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the latest document in the database successfully!", ephemeral=True)
+                else:
+                    await interaction.response.send_message("No changes were made to the database.", ephemeral=True)
             else:
-                # If it's a list, remove the old entry (if exists) and add the new one
-                existing_finalized_ads = [ad for ad in doc['finalized_ad_text'] if ad.get('index') != self.index]
-                existing_finalized_ads.append(new_finalized_ad)
-                update = {"$set": {"finalized_ad_text": existing_finalized_ads}}
-
-            # Perform the update
-            result = self.collection.update_one({}, update, upsert=True)
-
-            if result.modified_count > 0 or result.upserted_id:
-                # Update the view
-                self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
-                self.view.finalized_ad_texts.append(new_finalized_ad)
-                
-                embed = self.view.get_embed()
-                await interaction.response.edit_message(embed=embed, view=self.view)
-                await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the database successfully!", ephemeral=True)
-            else:
-                await interaction.response.send_message("No changes were made to the database.", ephemeral=True)
+                # If no document exists, create a new one
+                new_document = {
+                    "finalized_ad_text": [new_finalized_ad],
+                    "list_of_ad_text": {
+                        "headlines": self.view.headlines,
+                        "descriptions": self.view.descriptions
+                    }
+                }
+                result = self.collection.insert_one(new_document)
+                if result.inserted_id:
+                    await interaction.response.send_message(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"Failed to save ad to the database.", ephemeral=True)
 
         except Exception as e:
             await interaction.response.send_message(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
