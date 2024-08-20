@@ -597,7 +597,7 @@ class AdEditModal(Modal):
             warnings.append(f"Description exceeds limit by {len(description) - 90} characters")
         return " | ".join(warnings) if warnings else "No warnings"
 
-    async def on_submit(self, interaction: discord.Interaction):
+async def on_submit(self, interaction: discord.Interaction):
         new_headline = f"{self.headline.value} (Finalized)"
         new_description = self.description.value
 
@@ -608,51 +608,50 @@ class AdEditModal(Modal):
             await interaction.response.defer()
 
         try:
-            # Update the list_of_ad_text in the database
-            self.collection.update_one(
-                {},
-                {
-                    "$set": {
-                        f"list_of_ad_text.headlines.{self.index}": new_headline,
-                        f"list_of_ad_text.descriptions.{self.index}": new_description
-                    }
-                },
-                upsert=True
-            )
+            # Fetch the current document
+            doc = self.collection.find_one({})
 
-            # Update or add to finalized_ad_text
-            finalized_ad = {
+            # Prepare the update for list_of_ad_text
+            list_of_ad_text_update = {
+                f"list_of_ad_text.headlines.{self.index}": new_headline,
+                f"list_of_ad_text.descriptions.{self.index}": new_description
+            }
+
+            # Prepare the new finalized ad
+            new_finalized_ad = {
                 'index': self.index,
                 'headline': new_headline,
                 'description': new_description
             }
-            
-            # Check if finalized_ad_text exists and is an array
-            doc = self.collection.find_one({}, {"finalized_ad_text": 1})
-            if "finalized_ad_text" not in doc or not isinstance(doc["finalized_ad_text"], list):
-                # If it doesn't exist or is not an array, set it to an empty array
-                self.collection.update_one({}, {"$set": {"finalized_ad_text": []}}, upsert=True)
 
-            # Now we can safely update the array
-            self.collection.update_one(
-                {},
-                {
-                    "$pull": {"finalized_ad_text": {"index": self.index}},
-                    "$push": {"finalized_ad_text": finalized_ad}
-                }
-            )
+            # Prepare the update for finalized_ad_text
+            if 'finalized_ad_text' not in doc or not isinstance(doc['finalized_ad_text'], list):
+                # If finalized_ad_text doesn't exist or is not a list, set it to a list with the new ad
+                finalized_ad_text_update = {"finalized_ad_text": [new_finalized_ad]}
+            else:
+                # If it's a list, remove the old entry (if exists) and add the new one
+                existing_finalized_ads = [ad for ad in doc['finalized_ad_text'] if ad.get('index') != self.index]
+                existing_finalized_ads.append(new_finalized_ad)
+                finalized_ad_text_update = {"finalized_ad_text": existing_finalized_ads}
 
-            # Update the view
-            self.view.headlines[self.index] = new_headline
-            self.view.descriptions[self.index] = new_description
-            self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
-            self.view.finalized_ad_texts.append(finalized_ad)
-            
-            embed = self.view.get_embed()
-            await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
-            await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
+            # Combine updates
+            update = {"$set": {**list_of_ad_text_update, **finalized_ad_text_update}}
 
-        except WriteError as e:
-            await interaction.followup.send(f"Error updating the database: {str(e)}", ephemeral=True)
+            # Perform the update
+            result = self.collection.update_one({}, update, upsert=True)
+
+            if result.modified_count > 0 or result.upserted_id:
+                # Update the view
+                self.view.headlines[self.index] = new_headline
+                self.view.descriptions[self.index] = new_description
+                self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
+                self.view.finalized_ad_texts.append(new_finalized_ad)
+                
+                embed = self.view.get_embed()
+                await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
+                await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
+            else:
+                await interaction.followup.send("No changes were made to the database.", ephemeral=True)
+
         except Exception as e:
-            await interaction.followup.send(f"An unexpected error occurred: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
