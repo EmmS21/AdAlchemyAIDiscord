@@ -4,6 +4,7 @@ from discord.ui import Button, View, TextInput, Modal
 from collections import defaultdict
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
 import os
+from pymongo.errors import WriteError
 
 guild_business_data = defaultdict(dict)
 guild_states = {}
@@ -597,40 +598,51 @@ class AdEditModal(Modal):
         return " | ".join(warnings) if warnings else "No warnings"
 
     async def on_submit(self, interaction: discord.Interaction):
-        new_headline = self.headline.value
+        new_headline = f"{self.headline.value} (Finalized)"
         new_description = self.description.value
 
         warning_text = self.get_warning_text(new_headline, new_description)
         if warning_text != "No warnings":
             await interaction.response.send_message(f"Warning: {warning_text}. Changes will be saved, but may be truncated in some displays.", ephemeral=True)
+        else:
+            await interaction.response.defer()
 
-        result = self.collection.update_one(
-            {},
-            {
-                "$set": {
-                    f"list_of_ad_text.headlines.{self.index}": new_headline,
-                    f"list_of_ad_text.descriptions.{self.index}": new_description
+        try:
+            # Update the list_of_ad_text in the database
+            self.collection.update_one(
+                {},
+                {
+                    "$set": {
+                        f"list_of_ad_text.headlines.{self.index}": new_headline,
+                        f"list_of_ad_text.descriptions.{self.index}": new_description
+                    }
+                },
+                upsert=True
+            )
+
+            # Update or add to finalized_ad_text
+            finalized_ad = {
+                'index': self.index,
+                'headline': new_headline,
+                'description': new_description
+            }
+            
+            # Check if finalized_ad_text exists and is an array
+            doc = self.collection.find_one({}, {"finalized_ad_text": 1})
+            if "finalized_ad_text" not in doc or not isinstance(doc["finalized_ad_text"], list):
+                # If it doesn't exist or is not an array, set it to an empty array
+                self.collection.update_one({}, {"$set": {"finalized_ad_text": []}}, upsert=True)
+
+            # Now we can safely update the array
+            self.collection.update_one(
+                {},
+                {
+                    "$pull": {"finalized_ad_text": {"index": self.index}},
+                    "$push": {"finalized_ad_text": finalized_ad}
                 }
-            },
-            upsert=True
-        )
+            )
 
-        finalized_ad = {
-            'index': self.index,
-            'headline': new_headline,
-            'description': new_description
-        }
-        
-        result = self.collection.update_one(
-            {},
-            {
-                "$pull": {"finalized_ad_text": {"index": self.index}},
-                "$push": {"finalized_ad_text": finalized_ad}
-            },
-            upsert=True
-        )
-
-        if result.modified_count > 0 or result.upserted_id:
+            # Update the view
             self.view.headlines[self.index] = new_headline
             self.view.descriptions[self.index] = new_description
             self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
@@ -638,7 +650,9 @@ class AdEditModal(Modal):
             
             embed = self.view.get_embed()
             await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
-            if warning_text == "No warnings":
-                await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
-        else:
-            await interaction.followup.send(f"Ad {self.index + 1} updated, but failed to save to the database.", ephemeral=True)
+            await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
+
+        except WriteError as e:
+            await interaction.followup.send(f"Error updating the database: {str(e)}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"An unexpected error occurred: {str(e)}", ephemeral=True)
