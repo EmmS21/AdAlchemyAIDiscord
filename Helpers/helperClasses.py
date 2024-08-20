@@ -564,6 +564,7 @@ class AdTextView(View):
 class AdEditModal(Modal):
     def __init__(self, headline, description, index, collection, view, is_finalized=False):
         super().__init__(title='Edit Ad Text')
+        print('EditModal triggered')
         self.index = index
         self.collection = collection
         self.view = view
