@@ -365,8 +365,8 @@ async def keywords(interaction: discord.Interaction):
                     if 'selected_keywords' in document and document['selected_keywords']:
                         keywords_to_display = [{'text': kw} for kw in document['selected_keywords']]
                         title = "Previously Selected Keywords"
-                    elif 'keywords' in document:
-                        keywords_to_display = document['keywords']
+                    elif 'list_of_keywords' in document:
+                        keywords_to_display = document['list_of_keywords']
                         title = "Available Keywords"
                     else:
                         await interaction.response.send_message("No keywords found for your business.", ephemeral=True)
