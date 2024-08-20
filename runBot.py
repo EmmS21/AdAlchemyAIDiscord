@@ -351,6 +351,7 @@ async def keywords(interaction: discord.Interaction):
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
         mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
         user_record = mappings_collection.find_one({"owner_ids": user_id})
+        print('user_record', user_record)
         
         if user_record and "business_name" in user_record:
             business_name = user_record["business_name"]
@@ -385,5 +386,5 @@ async def keywords(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
-        
+
 client.run(os.getenv('DISCORD_TOKEN'))
