@@ -1,5 +1,5 @@
 import discord
-from discord import ButtonStyle, Embed
+from discord import ButtonStyle, Embed, TextStyle
 from discord.ui import Button, View, TextInput, Modal
 from collections import defaultdict
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
@@ -134,11 +134,6 @@ class BusinessEditModal(Modal, title='Edit Business Information'):
                 await interaction.response.send_message(f"Failed to update business information.", ephemeral=True)
         else:
             await interaction.response.send_message("Unable to find your business. Please make sure you've completed the initial setup.", ephemeral=True)
-
-from discord import ButtonStyle, Embed, TextStyle
-from discord.ui import View, Button, Modal, TextInput
-from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
-import os
 
 class AddPathModal(Modal, title='Add New Research Path'):
     def __init__(self, callback):
@@ -488,3 +483,151 @@ class KeywordPaginationView(discord.ui.View):
             await self.update_message(interaction)
             return False
         return True
+    
+class AdTextView(View):
+    def __init__(self, ad_variations, finalized_ad_texts, collection):
+        super().__init__()
+        self.ad_variations = ad_variations
+        self.finalized_ad_texts = finalized_ad_texts
+        self.collection = collection
+        self.current_page = 0
+        self.per_page = 1
+        
+        self.previous_button = Button(label="Previous", style=ButtonStyle.gray, disabled=True)
+        self.next_button = Button(label="Next", style=ButtonStyle.gray)
+        self.edit_button = Button(label="Edit", style=ButtonStyle.primary)
+        
+        self.previous_button.callback = self.previous_callback
+        self.next_button.callback = self.next_callback
+        self.edit_button.callback = self.edit_callback
+        
+        self.add_item(self.previous_button)
+        self.add_item(self.next_button)
+        self.add_item(self.edit_button)
+
+    async def previous_callback(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        await self.update_message(interaction)
+
+    async def next_callback(self, interaction: discord.Interaction):
+        self.current_page = min(len(self.ad_variations) - 1, self.current_page + 1)
+        await self.update_message(interaction)
+
+    async def edit_callback(self, interaction: discord.Interaction):
+        ad = self.ad_variations[self.current_page]
+        finalized_ad = next((fad for fad in self.finalized_ad_texts if fad.get('index') == self.current_page), None)
+        
+        if finalized_ad:
+            headline = finalized_ad['headline']
+            description = finalized_ad['description']
+        else:
+            headline = ad['headline']
+            description = ad['description']
+        
+        modal = AdEditModal(headline, description, self.current_page, self.collection, self)
+        await interaction.response.send_modal(modal)
+
+    async def update_message(self, interaction):
+        self.previous_button.disabled = (self.current_page == 0)
+        self.next_button.disabled = (self.current_page == len(self.ad_variations) - 1)
+        
+        embed = self.get_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    def get_embed(self):
+        ad = self.ad_variations[self.current_page]
+        finalized_ad = next((fad for fad in self.finalized_ad_texts if fad['index'] == self.current_page), None)
+        
+        if finalized_ad:
+            title = f"Ad Variation {self.current_page + 1} (Finalized)"
+            headline = finalized_ad['headline']
+            description = finalized_ad['description']
+        else:
+            title = f"Ad Variation {self.current_page + 1}"
+            headline = ad['headline']
+            description = ad['description']
+
+        embed = Embed(title=title, color=discord.Color.blue())
+        embed.add_field(name="Headline", value=headline, inline=False)
+        embed.add_field(name="Description", value=description, inline=False)
+        embed.set_footer(text=f"Ad {self.current_page + 1} of {len(self.ad_variations)}")
+        return embed
+
+class AdEditModal(Modal, title='Edit Ad Text'):
+    def __init__(self, headline, description, index, collection, view):
+        super().__init__()
+        self.index = index
+        self.collection = collection
+        self.view = view
+
+        warning_text = self.get_warning_text(headline, description)
+
+        self.headline = TextInput(
+            label='Headline (max 30 characters)',
+            default=headline, 
+            style=TextStyle.short,
+            required=True,
+            max_length=100  
+        )
+        self.description = TextInput(
+            label='Description (max 90 characters)',
+            default=description, 
+            style=TextStyle.paragraph,
+            required=True,
+            max_length=200  
+        )
+        
+        if warning_text != "No warnings":
+            self.warning = TextInput(
+                label='⚠️ Warning (do not edit this field)',
+                default=warning_text,
+                style=TextStyle.short,
+                required=False,
+                max_length=100
+            )
+            self.add_item(self.warning)
+
+        self.add_item(self.headline)
+        self.add_item(self.description)
+
+    def get_warning_text(self, headline, description):
+        warnings = []
+        if len(headline) > 30:
+            warnings.append(f"Headline exceeds limit by {len(headline) - 30} characters")
+        if len(description) > 90:
+            warnings.append(f"Description exceeds limit by {len(description) - 90} characters")
+        return " | ".join(warnings) if warnings else "No warnings"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        warning_text = self.get_warning_text(self.headline.value, self.description.value)        
+        if warning_text != "No warnings":
+            await interaction.response.send_message(f"Cannot submit. {warning_text}. Please edit and try again.", ephemeral=True)
+            return
+        
+        finalized_ad = {
+            'index': self.index,
+            'headline': self.headline.value,
+            'description': self.description.value
+        }
+        
+        result = self.collection.update_one(
+            {},
+            {"$pull": {"finalized_ad_text": {"index": self.index}}},
+            upsert=True
+        )
+        
+        result = self.collection.update_one(
+            {},
+            {"$push": {"finalized_ad_text": finalized_ad}},
+            upsert=True
+        )
+
+        if result.modified_count > 0 or result.upserted_id:
+            self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
+            self.view.finalized_ad_texts.append(finalized_ad)
+            
+            embed = self.view.get_embed()
+            await interaction.response.edit_message(embed=embed, view=self.view)
+            await interaction.followup.send(f"Ad {self.index + 1} updated and saved to the database successfully!", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"Ad {self.index + 1} updated, but failed to save to the database.", ephemeral=True)
