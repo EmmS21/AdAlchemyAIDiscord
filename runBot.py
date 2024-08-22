@@ -8,8 +8,13 @@ import dotenv
 from collections import defaultdict
 import re
 from pathlib import Path
+import logging
+
+
 
 dotenv.load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 guild_business_data = defaultdict(dict)
 guild_onboarded_status = {}
 user_data = {}
@@ -342,46 +347,72 @@ async def user_personas(interaction: discord.Interaction):
 
 @tree.command(name="keywords", description="View and select keywords for your business")
 async def keywords(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    is_onboarded = await check_onboarded_status(user_id)
+    await interaction.response.defer(ephemeral=True)
     
-    if is_onboarded:
+    try:
+        user_id = interaction.user.id
+        logger.info(f"Keywords command initiated by user {user_id}")
+        
+        is_onboarded = await check_onboarded_status(user_id)
+        logger.info(f"User onboarded status: {is_onboarded}")
+        
+        if not is_onboarded:
+            calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
+            await interaction.followup.send(
+                f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
+                ephemeral=True
+            )
+            return
+
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
         mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
         user_record = mappings_collection.find_one({"owner_ids": user_id})
         
-        if user_record and "business_name" in user_record:
-            business_name = user_record["business_name"]
-            business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "judge_data", business_name)
-            if business_collection is not None:
-                latest_document = get_latest_document(business_collection)
-                
-                if latest_document:
-                    if 'selected_keywords' in latest_document and latest_document['selected_keywords']:
-                        keywords_to_display = [{'text': kw} for kw in latest_document['selected_keywords']]
-                        title = "Previously Selected Keywords"
-                    elif 'keywords' in latest_document:
-                        keywords_to_display = latest_document['keywords']
-                        title = "Available Keywords"
-                    else:
-                        await interaction.response.send_message("No keywords found for your business in the latest document.", ephemeral=True)
-                        return
+        if not user_record or "business_name" not in user_record:
+            await interaction.followup.send("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
+            return
 
-                    view = KeywordPaginationView(keywords_to_display, business_collection, title)
-                    embed = view.get_embed()
-                    await interaction.response.send_message(embed=embed, view=view)
-                else:
-                    await interaction.response.send_message(f"No document found for business: {business_name}", ephemeral=True)
-            else:
-                await interaction.response.send_message(f"No collection found for the business: {business_name}", ephemeral=True)
-        else:
-            await interaction.response.send_message("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
-    else:
-        calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
-        await interaction.response.send_message(
-            f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
-            ephemeral=True
-        )
+        business_name = user_record["business_name"]
+        logger.info(f"Business name: {business_name}")
+        
+        business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "judge_data", business_name)
+        if business_collection is None:
+            await interaction.followup.send(f"No collection found for the business: {business_name}", ephemeral=True)
+            return
+
+        latest_document = get_latest_document(business_collection)
+        logger.info(f"Latest document retrieved: {latest_document is not None}")
+        
+        if not latest_document:
+            await interaction.followup.send(f"No document found for business: {business_name}", ephemeral=True)
+            return
+
+        keywords_to_display = []
+        title = ""
+        
+        if 'selected_keywords' in latest_document and latest_document['selected_keywords']:
+            keywords_to_display = latest_document['selected_keywords']
+            title = "Previously Selected Keywords"
+        elif 'keywords' in latest_document:
+            keywords_to_display = latest_document['keywords']
+            title = "Available Keywords"
+        
+        logger.info(f"Keywords to display: {len(keywords_to_display)}")
+        logger.info(f"Title: {title}")
+
+        if not keywords_to_display:
+            await interaction.followup.send("No keywords found for your business.", ephemeral=True)
+            return
+
+        view = KeywordPaginationView(keywords_to_display, business_collection, title)
+        embed = view.get_embed()
+        await interaction.followup.send(embed=embed, view=view)
+        
+    except Exception as e:
+        logger.error(f"Error in keywords command: {str(e)}", exc_info=True)
+        await interaction.followup.send("An error occurred while processing your request. Please try again later or contact support if the issue persists.", ephemeral=True)
+
+
 
 @tree.command(name="adtext", description="View and edit ad variations for your business")
 async def adtext(interaction: discord.Interaction):
