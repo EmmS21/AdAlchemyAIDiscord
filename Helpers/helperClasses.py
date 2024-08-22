@@ -379,16 +379,16 @@ class PersonaModal(Modal):
         await self.callback(interaction, persona_data)
 
 class KeywordPaginationView(discord.ui.View):
-    def __init__(self, keywords, collection, title):
+    def __init__(self, selected_keywords, new_keywords, collection):
         super().__init__()
-        self.keywords = self._normalize_keywords(keywords)
+        self.selected_keywords = self._normalize_keywords(selected_keywords)
+        self.new_keywords = self._normalize_keywords(new_keywords)
         self.collection = collection
-        self.title = title
         self.current_page = 0
         self.per_page = 5
+        self.current_keyword_type = "selected"
 
-        # Initialize selected_keywords to include only those from the 'selected_keywords' field
-        self.selected_keywords = {}  
+        self.selected_keywords_dict = {}  
         latest_document = get_latest_document(self.collection)
         if latest_document and 'selected_keywords' in latest_document:
             self.selected_keywords = {kw['text']: kw for kw in latest_document['selected_keywords']}
@@ -402,8 +402,19 @@ class KeywordPaginationView(discord.ui.View):
         self.previous_button.callback = self.previous_callback
         self.next_button.callback = self.next_callback
         self.submit_button.callback = self.submit_callback
+
+         # Create select menu for keyword type
+        self.keyword_type_select = discord.ui.Select(
+            placeholder="Choose Keyword Category",
+            options=[
+                discord.SelectOption(label="Previously Selected Keywords", value="selected"),
+                discord.SelectOption(label="New Keywords", value="new")
+            ]
+        )
+        self.keyword_type_select.callback = self.keyword_type_callback
         
         # Add persistent buttons to the view
+        self.add_item(self.keyword_type_select)
         self.add_item(self.previous_button)
         self.add_item(self.next_button)
         self.add_item(self.submit_button)
@@ -414,7 +425,8 @@ class KeywordPaginationView(discord.ui.View):
         await self.update_message(interaction)
 
     async def next_callback(self, interaction: discord.Interaction):
-        self.current_page = min(len(self.keywords) // self.per_page, self.current_page + 1)
+        keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
+        self.current_page = min(len(keywords) // self.per_page, self.current_page + 1)
         await self.update_message(interaction)
 
     async def submit_callback(self, interaction: discord.Interaction):
@@ -437,10 +449,16 @@ class KeywordPaginationView(discord.ui.View):
                 await interaction.response.send_message(f"Failed to save keywords to the database.", ephemeral=True)        
         self.stop()
     
+    async def keyword_type_callback(self, interaction: discord.Interaction):
+        self.current_keyword_type = self.keyword_type_select.values[0]
+        self.current_page = 0
+        await self.update_message(interaction)
+
     def add_toggle_buttons(self):
+        keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
         start = self.current_page * self.per_page
         end = start + self.per_page
-        for i in range(start, min(end, len(self.keywords))):
+        for i in range(start, min(end, len(keywords))):
             self.add_item(discord.ui.Button(style=ButtonStyle.gray, label=f"Toggle {i+1-start}", custom_id=f"toggle_{i}"))
 
     def _normalize_keywords(self, keywords):
@@ -454,12 +472,14 @@ class KeywordPaginationView(discord.ui.View):
     async def update_message(self, interaction):
         self.clear_items()
         
+        self.add_item(self.keyword_type_select)
         self.add_item(self.previous_button)
         self.add_item(self.next_button)
         self.add_item(self.submit_button)
         
+        keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
         self.previous_button.disabled = (self.current_page == 0)
-        self.next_button.disabled = (self.current_page == len(self.keywords) // self.per_page)
+        self.next_button.disabled = (self.current_page == len(keywords) // self.per_page)
         
         self.add_toggle_buttons()
         
@@ -467,39 +487,46 @@ class KeywordPaginationView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
     def get_embed(self):
+        keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
         start = self.current_page * self.per_page
         end = start + self.per_page
-        current_keywords = self.keywords[start:end]
+        current_keywords = keywords[start:end]
 
-        embed = discord.Embed(title=self.title, color=discord.Color.blue())
+        title = "Previously Selected Keywords" if self.current_keyword_type == "selected" else "New Keywords"
+        embed = discord.Embed(title=title, color=discord.Color.blue())
+        embed.description = "Use the menu above to switch between keyword categories."
+
         for keyword in current_keywords:
             if isinstance(keyword, dict) and 'text' in keyword:
-                status = "✅" if keyword['text'] in self.selected_keywords else "❌"
+                status = "✅" if keyword['text'] in self.selected_keywords_dict else "❌"
                 value = f"Avg. Monthly Searches: {keyword.get('avg_monthly_searches', 'N/A')}\nCompetition: {keyword.get('competition', 'N/A')}"
+                if self.current_keyword_type == "new":
+                    value += f"\nLast Update: {keyword.get('last_update', 'N/A')}"
                 embed.add_field(name=f"{keyword['text']} [{status}]", value=value, inline=False)
             elif isinstance(keyword, str):
-                status = "✅" if keyword in self.selected_keywords else "❌"
+                status = "✅" if keyword in self.selected_keywords_dict else "❌"
                 embed.add_field(name=f"{keyword} [{status}]", value="Previously selected keyword", inline=False)
 
-        embed.set_footer(text=f"Page {self.current_page + 1}/{len(self.keywords) // self.per_page + 1}")
+        embed.set_footer(text=f"Page {self.current_page + 1}/{len(keywords) // self.per_page + 1}")
         return embed
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.data['custom_id'].startswith('toggle_'):
             index = int(interaction.data['custom_id'].split('_')[1])
-            keyword = self.keywords[index]
-            if keyword['text'] in self.selected_keywords:
-                del self.selected_keywords[keyword['text']]
+            keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
+            keyword = keywords[index]
+            if keyword['text'] in self.selected_keywords_dict:
+                del self.selected_keywords_dict[keyword['text']]
             else:
-                self.selected_keywords[keyword['text']] = {
+                self.selected_keywords_dict[keyword['text']] = {
                     'text': keyword['text'],
                     'avg_monthly_searches': keyword.get('avg_monthly_searches', 'N/A'),
                     'competition': keyword.get('competition', 'N/A')
                 }
             await self.update_message(interaction)
             return False
-        return True
-    
+        return True   
+     
 class AdTextView(View):
     def __init__(self, ad_variations, finalized_ad_texts, collection):
         super().__init__()

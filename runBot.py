@@ -387,31 +387,32 @@ async def keywords(interaction: discord.Interaction):
             await interaction.followup.send(f"No document found for business: {business_name}", ephemeral=True)
             return
 
-        keywords_to_display = []
+        selected_keywords = []
+        new_keywords = []
         title = ""
         
         if 'selected_keywords' in latest_document and latest_document['selected_keywords']:
-            keywords_to_display = latest_document['selected_keywords']
+            selected_keywords = latest_document['selected_keywords']
             title = "Previously Selected Keywords"
-        elif 'keywords' in latest_document:
-            keywords_to_display = latest_document['keywords']
-            title = "Available Keywords"
+        if 'keywords' in latest_document:
+            new_keywords = latest_document['keywords']
+            if not title:
+                title = "Available Keywords"
         
-        logger.info(f"Keywords to display: {len(keywords_to_display)}")
-        logger.info(f"Title: {title}")
+        logger.info(f"Selected keywords: {len(selected_keywords)}")
+        logger.info(f"New keywords: {len(new_keywords)}")
 
-        if not keywords_to_display:
+        if not selected_keywords and not new_keywords:
             await interaction.followup.send("No keywords found for your business.", ephemeral=True)
             return
 
-        view = KeywordPaginationView(keywords_to_display, business_collection, title)
+        view = KeywordPaginationView(selected_keywords, new_keywords, business_collection, title)
         embed = view.get_embed()
         await interaction.followup.send(embed=embed, view=view)
         
     except Exception as e:
         logger.error(f"Error in keywords command: {str(e)}", exc_info=True)
         await interaction.followup.send("An error occurred while processing your request. Please try again later or contact support if the issue persists.", ephemeral=True)
-
 
 
 @tree.command(name="adtext", description="View and edit ad variations for your business")
