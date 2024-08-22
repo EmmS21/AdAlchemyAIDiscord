@@ -388,10 +388,10 @@ class KeywordPaginationView(discord.ui.View):
         self.per_page = 5
 
         # Initialize selected_keywords to include only those from the 'selected_keywords' field
-        self.selected_keywords = set()  # Start with an empty set
+        self.selected_keywords = {}  
         latest_document = get_latest_document(self.collection)
         if latest_document and 'selected_keywords' in latest_document:
-            self.selected_keywords = set(latest_document['selected_keywords'])
+            self.selected_keywords = {kw['text']: kw for kw in latest_document['selected_keywords']}
         
         # Create persistent buttons
         self.previous_button = discord.ui.Button(label="Previous", style=ButtonStyle.gray, disabled=True)
@@ -418,7 +418,7 @@ class KeywordPaginationView(discord.ui.View):
         await self.update_message(interaction)
 
     async def submit_callback(self, interaction: discord.Interaction):
-        selected_keywords_list = list(self.selected_keywords)
+        selected_keywords_list = list(self.selected_keywords.values())
         latest_document = get_latest_document(self.collection)
         if latest_document:
             result = self.collection.update_one(
@@ -487,11 +487,15 @@ class KeywordPaginationView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.data['custom_id'].startswith('toggle_'):
             index = int(interaction.data['custom_id'].split('_')[1])
-            keyword = self.keywords[index]['text']
-            if keyword in self.selected_keywords:
-                self.selected_keywords.remove(keyword)
+            keyword = self.keywords[index]
+            if keyword['text'] in self.selected_keywords:
+                del self.selected_keywords[keyword['text']]
             else:
-                self.selected_keywords.add(keyword)
+                self.selected_keywords[keyword['text']] = {
+                    'text': keyword['text'],
+                    'avg_monthly_searches': keyword.get('avg_monthly_searches', 'N/A'),
+                    'competition': keyword.get('competition', 'N/A')
+                }
             await self.update_message(interaction)
             return False
         return True
