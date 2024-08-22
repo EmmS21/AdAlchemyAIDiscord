@@ -568,6 +568,7 @@ class KeywordPaginationView(discord.ui.View):
 class AdTextView(View):
     def __init__(self, ad_variations, finalized_ad_texts, collection, last_update):
         super().__init__()
+        self.ad_variations = ad_variations
         self.headlines = [ad['headline'] for ad in ad_variations]
         self.descriptions = [ad['description'] for ad in ad_variations]
         self.finalized_ad_texts = finalized_ad_texts
