@@ -661,7 +661,7 @@ class AdTextView(View):
         embed = Embed(title=title, color=discord.Color.blue())
         embed.add_field(name="Headline", value=headline, inline=False)
         embed.add_field(name="Description", value=description, inline=False)
-        embed.set_footer(text=f"Ad {self.current_page + 1} of {self.total_ads}")
+        embed.set_footer(text=footer_text)
         return embed
     
 class AdEditModal(Modal):
