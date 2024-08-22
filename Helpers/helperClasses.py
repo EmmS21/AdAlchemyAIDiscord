@@ -683,68 +683,68 @@ class AdEditModal(Modal):
             warnings.append(f"Description exceeds limit by {len(description) - 90} characters")
         return " | ".join(warnings) if warnings else "No warnings"
 
-async def on_submit(self, interaction: discord.Interaction):
-    try:
-        new_headline = self.headline.value
-        new_description = self.description.value
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            new_headline = self.headline.value
+            new_description = self.description.value
 
-        warning_text = self.get_warning_text(new_headline, new_description)
-        
-        errors = []
-        if len(new_headline) > 30:
-            errors.append(f"Headline exceeds 30 characters (current: {len(new_headline)})")
-        if len(new_description) > 90:
-            errors.append(f"Description exceeds 90 characters (current: {len(new_description)})")
+            warning_text = self.get_warning_text(new_headline, new_description)
+            
+            errors = []
+            if len(new_headline) > 30:
+                errors.append(f"Headline exceeds 30 characters (current: {len(new_headline)})")
+            if len(new_description) > 90:
+                errors.append(f"Description exceeds 90 characters (current: {len(new_description)})")
 
-        if errors:
-            error_message = "Cannot save ad text. Please correct the following:\n" + "\n".join(errors)
-            await interaction.response.send_message(error_message, ephemeral=True)
-            return
+            if errors:
+                error_message = "Cannot save ad text. Please correct the following:\n" + "\n".join(errors)
+                await interaction.response.send_message(error_message, ephemeral=True)
+                return
 
-        await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=True)
 
-        new_finalized_ad = {
-            'index': self.index,
-            'headline': new_headline,
-            'description': new_description
-        }
-
-        latest_document = get_latest_document(self.collection)
-
-        if latest_document:
-            if 'finalized_ad_text' not in latest_document or not isinstance(latest_document['finalized_ad_text'], list):
-                update = {"$set": {"finalized_ad_text": [new_finalized_ad]}}
-            else:
-                existing_finalized_ads = [ad for ad in latest_document['finalized_ad_text'] if ad.get('index') != self.index]
-                existing_finalized_ads.append(new_finalized_ad)
-                update = {"$set": {"finalized_ad_text": existing_finalized_ads}}
-
-            result = self.collection.update_one({'_id': latest_document['_id']}, update)
-
-            if result.modified_count > 0:
-                self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
-                self.view.finalized_ad_texts.append(new_finalized_ad)
-                
-                embed = self.view.get_embed()
-                await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
-                await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the database successfully!", ephemeral=True)
-            else:
-                await interaction.followup.send("No changes were made to the database.", ephemeral=True)
-        else:
-            new_document = {
-                "finalized_ad_text": [new_finalized_ad]
+            new_finalized_ad = {
+                'index': self.index,
+                'headline': new_headline,
+                'description': new_description
             }
-            result = self.collection.insert_one(new_document)
-            if result.inserted_id:
-                self.view.finalized_ad_texts.append(new_finalized_ad)
-                embed = self.view.get_embed()
-                await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
-                await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
+
+            latest_document = get_latest_document(self.collection)
+
+            if latest_document:
+                if 'finalized_ad_text' not in latest_document or not isinstance(latest_document['finalized_ad_text'], list):
+                    update = {"$set": {"finalized_ad_text": [new_finalized_ad]}}
+                else:
+                    existing_finalized_ads = [ad for ad in latest_document['finalized_ad_text'] if ad.get('index') != self.index]
+                    existing_finalized_ads.append(new_finalized_ad)
+                    update = {"$set": {"finalized_ad_text": existing_finalized_ads}}
+
+                result = self.collection.update_one({'_id': latest_document['_id']}, update)
+
+                if result.modified_count > 0:
+                    self.view.finalized_ad_texts = [fad for fad in self.view.finalized_ad_texts if fad.get('index') != self.index]
+                    self.view.finalized_ad_texts.append(new_finalized_ad)
+                    
+                    embed = self.view.get_embed()
+                    await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
+                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the database successfully!", ephemeral=True)
+                else:
+                    await interaction.followup.send("No changes were made to the database.", ephemeral=True)
             else:
-                await interaction.followup.send(f"Failed to save ad to the database.", ephemeral=True)
+                new_document = {
+                    "finalized_ad_text": [new_finalized_ad]
+                }
+                result = self.collection.insert_one(new_document)
+                if result.inserted_id:
+                    self.view.finalized_ad_texts.append(new_finalized_ad)
+                    embed = self.view.get_embed()
+                    await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
+                    await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"Failed to save ad to the database.", ephemeral=True)
 
-        if warning_text != "No warnings":
-            await interaction.followup.send(f"Warning: {warning_text}. Changes have been saved, but may be truncated in some displays.", ephemeral=True)
+            if warning_text != "No warnings":
+                await interaction.followup.send(f"Warning: {warning_text}. Changes have been saved, but may be truncated in some displays.", ephemeral=True)
 
-    except Exception as e:
-        await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
