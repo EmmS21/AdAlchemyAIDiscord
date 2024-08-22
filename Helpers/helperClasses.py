@@ -602,6 +602,11 @@ class AdTextView(View):
         self.add_item(self.previous_button)
         self.add_item(self.next_button)
         self.add_item(self.edit_button)
+        
+    async def ad_type_callback(self, interaction: discord.Interaction):
+        self.current_type = self.ad_type_select.values[0]
+        self.current_page = 0
+        await self.update_message(interaction)
 
     async def previous_callback(self, interaction: discord.Interaction):
         self.current_page = max(0, self.current_page - 1)
