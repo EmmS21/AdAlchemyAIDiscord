@@ -379,7 +379,7 @@ class PersonaModal(Modal):
         await self.callback(interaction, persona_data)
 
 class KeywordPaginationView(discord.ui.View):
-    def __init__(self, selected_keywords, new_keywords, collection):
+    def __init__(self, selected_keywords, new_keywords, collection, title):
         super().__init__()
         self.selected_keywords = self._normalize_keywords(selected_keywords)
         self.new_keywords = self._normalize_keywords(new_keywords)
