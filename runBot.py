@@ -322,10 +322,10 @@ async def user_personas(interaction: discord.Interaction):
             if business_collection is not None:
                 latest_document = get_latest_document(business_collection)
                 
-                if latest_document and 'user_persona' in latest_document:
-                    personas = latest_document['user_persona']
+                if latest_document and 'user_personas' in latest_document:
+                    personas = latest_document['user_personas']
                     if isinstance(personas, str):
-                        personas = [personas]  # Convert single string to list
+                        personas = [personas] 
                     
                     view = UserPersonaView(personas, business_name)
                     embed = view.get_embed()
