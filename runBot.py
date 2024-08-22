@@ -390,6 +390,8 @@ async def keywords(interaction: discord.Interaction):
         selected_keywords = []
         new_keywords = []
         title = ""
+        last_update = latest_document.get('last_update', 'N/A')  # Extract last_update
+
         
         if 'selected_keywords' in latest_document and latest_document['selected_keywords']:
             selected_keywords = latest_document['selected_keywords']
@@ -401,12 +403,13 @@ async def keywords(interaction: discord.Interaction):
         
         logger.info(f"Selected keywords: {len(selected_keywords)}")
         logger.info(f"New keywords: {len(new_keywords)}")
+        logger.info(f"Last update: {last_update}")
 
         if not selected_keywords and not new_keywords:
             await interaction.followup.send("No keywords found for your business.", ephemeral=True)
             return
 
-        view = KeywordPaginationView(selected_keywords, new_keywords, business_collection, title)
+        view = KeywordPaginationView(selected_keywords, new_keywords, business_collection, title, last_update)
         embed = view.get_embed()
         await interaction.followup.send(embed=embed, view=view)
         

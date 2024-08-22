@@ -379,7 +379,7 @@ class PersonaModal(Modal):
         await self.callback(interaction, persona_data)
 
 class KeywordPaginationView(discord.ui.View):
-    def __init__(self, selected_keywords, new_keywords, collection, title):
+    def __init__(self, selected_keywords, new_keywords, collection, title, last_update):
         super().__init__()
         self.selected_keywords = self._normalize_keywords(selected_keywords)
         self.new_keywords = self._normalize_keywords(new_keywords)
@@ -387,6 +387,8 @@ class KeywordPaginationView(discord.ui.View):
         self.current_page = 0
         self.per_page = 5
         self.current_keyword_type = "selected"
+        self.last_update = last_update 
+
 
         self.selected_keywords_dict = {}  
         latest_document = get_latest_document(self.collection)
@@ -514,7 +516,7 @@ class KeywordPaginationView(discord.ui.View):
                 status = "✅" if keyword['text'] in self.selected_keywords_dict else "❌"
                 value = f"Avg. Monthly Searches: {keyword.get('avg_monthly_searches', 'N/A')}\nCompetition: {keyword.get('competition', 'N/A')}"
                 if self.current_keyword_type == "new":
-                    value += f"\nLast Update: {keyword.get('last_update', 'N/A')}"
+                    value += f"\nLast Update: {self.last_update}"  
                 embed.add_field(name=f"{keyword['text']} [{status}]", value=value, inline=False)
             elif isinstance(keyword, str):
                 status = "✅" if keyword in self.selected_keywords_dict else "❌"
