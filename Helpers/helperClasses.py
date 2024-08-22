@@ -656,15 +656,15 @@ class AdEditModal(Modal):
         )
 
         self.headline = TextInput(
-            label=f'Headline {"(Finalized)" if is_finalized else ""} (recommended max 30 characters)',
+            label='Headline (max 30 characters)',
             style=TextStyle.short,
             default=headline,
             required=True,
-            max_length=200  # Allow longer input, but warn about it
+            max_length=200  
         )
 
         self.description = TextInput(
-            label=f'Description {"(Finalized)" if is_finalized else ""} (recommended max 90 characters)',
+            label='Description (max 90 characters)',
             style=TextStyle.paragraph,
             default=description,
             required=True,
