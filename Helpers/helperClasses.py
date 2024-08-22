@@ -434,7 +434,7 @@ class KeywordPaginationView(discord.ui.View):
         await self.update_message(interaction)
 
     async def submit_callback(self, interaction: discord.Interaction):
-        selected_keywords_list = list(self.selected_keywords.values())
+        selected_keywords_list = list(self.selected_keywords_dict.values())
         latest_document = get_latest_document(self.collection)
         if latest_document:
             result = self.collection.update_one(
