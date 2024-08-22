@@ -490,14 +490,25 @@ class KeywordPaginationView(discord.ui.View):
         keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
         start = self.current_page * self.per_page
         end = start + self.per_page
-        current_keywords = keywords[start:end]
+        
+        # Convert keywords to a list if it's a dictionary
+        if isinstance(keywords, dict):
+            keywords_list = list(keywords.items())
+        else:
+            keywords_list = keywords
+        
+        current_keywords = keywords_list[start:end]
 
         title = "Previously Selected Keywords" if self.current_keyword_type == "selected" else "New Keywords"
         embed = discord.Embed(title=title, color=discord.Color.blue())
         embed.description = "Use the menu above to switch between keyword categories."
 
         for keyword in current_keywords:
-            if isinstance(keyword, dict) and 'text' in keyword:
+            if isinstance(keyword, tuple):  # If keywords is a dict
+                key, value = keyword
+                status = "✅" if key in self.selected_keywords_dict else "❌"
+                embed.add_field(name=f"{key} [{status}]", value=str(value), inline=False)
+            elif isinstance(keyword, dict) and 'text' in keyword:
                 status = "✅" if keyword['text'] in self.selected_keywords_dict else "❌"
                 value = f"Avg. Monthly Searches: {keyword.get('avg_monthly_searches', 'N/A')}\nCompetition: {keyword.get('competition', 'N/A')}"
                 if self.current_keyword_type == "new":
@@ -507,7 +518,8 @@ class KeywordPaginationView(discord.ui.View):
                 status = "✅" if keyword in self.selected_keywords_dict else "❌"
                 embed.add_field(name=f"{keyword} [{status}]", value="Previously selected keyword", inline=False)
 
-        embed.set_footer(text=f"Page {self.current_page + 1}/{len(keywords) // self.per_page + 1}")
+        total_pages = (len(keywords_list) - 1) // self.per_page + 1
+        embed.set_footer(text=f"Page {self.current_page + 1}/{total_pages}")
         return embed
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
