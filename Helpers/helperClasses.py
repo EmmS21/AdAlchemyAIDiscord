@@ -583,10 +583,13 @@ class AdTextView(View):
         self.next_button.label = "Next"
         self.edit_button = Button(style=ButtonStyle.primary)
         self.edit_button.label = "Edit"
+        self.delete_button = Button(style=ButtonStyle.danger)
+        self.delete_button.label = "Delete Ad"
         
         self.previous_button.callback = self.previous_callback
         self.next_button.callback = self.next_callback
         self.edit_button.callback = self.edit_callback
+        self.delete_button.callback = self.delete_callback
 
         # Create select menu for ad text type
         self.ad_type_select = discord.ui.Select(
@@ -602,6 +605,65 @@ class AdTextView(View):
         self.add_item(self.previous_button)
         self.add_item(self.next_button)
         self.add_item(self.edit_button)
+        self.add_item(self.delete_button)
+
+    async def delete_callback(self, interaction: discord.Interaction):
+        confirm_button = Button(style=ButtonStyle.danger, label="Confirm Delete")
+        cancel_button = Button(style=ButtonStyle.secondary, label="Cancel")
+
+        async def confirm_delete(confirm_interaction: discord.Interaction):
+            await self.perform_delete(confirm_interaction)
+
+        async def cancel_delete(cancel_interaction: discord.Interaction):
+            await cancel_interaction.response.edit_message(content="Deletion cancelled.", view=None)
+
+        confirm_button.callback = confirm_delete
+        cancel_button.callback = cancel_delete
+
+        confirm_view = View()
+        confirm_view.add_item(confirm_button)
+        confirm_view.add_item(cancel_button)
+
+        await interaction.response.send_message("Are you sure you want to delete this ad?", view=confirm_view, ephemeral=True)
+
+    async def perform_delete(self, interaction: discord.Interaction):
+        try:
+            latest_document = get_latest_document(self.collection)
+            if not latest_document:
+                await interaction.response.send_message("No document found to delete from.", ephemeral=True)
+                return
+
+            if self.current_type == "new":
+                # Delete from ad_variations
+                update = {"$pull": {"ad_variations": {"headline": self.headlines[self.current_page]}}}
+                result = self.collection.update_one({'_id': latest_document['_id']}, update)
+                
+                if result.modified_count > 0:
+                    del self.ad_variations[self.current_page]
+                    del self.headlines[self.current_page]
+                    del self.descriptions[self.current_page]
+                    self.total_ads -= 1
+            else:
+                # Delete from finalized_ad_text
+                update = {"$pull": {"finalized_ad_text": {"index": self.current_page}}}
+                result = self.collection.update_one({'_id': latest_document['_id']}, update)
+                
+                if result.modified_count > 0:
+                    self.finalized_ad_texts = [ad for ad in self.finalized_ad_texts if ad['index'] != self.current_page]
+
+            if result.modified_count > 0:
+                await interaction.response.edit_message(content="Ad successfully deleted.", view=None)
+                self.current_page = max(0, min(self.current_page, self.total_ads - 1))
+                await self.update_parent_message(interaction)
+            else:
+                await interaction.response.edit_message(content="Failed to delete the ad. No changes were made.", view=None)
+
+        except Exception as e:
+            await interaction.response.edit_message(content=f"An error occurred while deleting the ad: {str(e)}", view=None)
+
+    async def update_parent_message(self, interaction: discord.Interaction):
+        embed = self.get_embed()
+        await interaction.message.edit(embed=embed, view=self)
 
     async def ad_type_callback(self, interaction: discord.Interaction):
         self.current_type = self.ad_type_select.values[0]
