@@ -684,27 +684,25 @@ class AdEditModal(Modal):
         return " | ".join(warnings) if warnings else "No warnings"
 
 async def on_submit(self, interaction: discord.Interaction):
-    new_headline = self.headline.value
-    new_description = self.description.value
+    try:
+        new_headline = self.headline.value
+        new_description = self.description.value
 
-    warning_text = self.get_warning_text(new_headline, new_description)
-    
-    errors = []
-    if len(new_headline) > 30:
-        errors.append(f"Headline exceeds 30 characters (current: {len(new_headline)})")
-    if len(new_description) > 90:
-        errors.append(f"Description exceeds 90 characters (current: {len(new_description)})")
+        warning_text = self.get_warning_text(new_headline, new_description)
+        
+        errors = []
+        if len(new_headline) > 30:
+            errors.append(f"Headline exceeds 30 characters (current: {len(new_headline)})")
+        if len(new_description) > 90:
+            errors.append(f"Description exceeds 90 characters (current: {len(new_description)})")
 
-    if errors:
-        error_message = "Cannot save ad text. Please correct the following:\n" + "\n".join(errors)
-        raise ValueError(error_message)
+        if errors:
+            error_message = "Cannot save ad text. Please correct the following:\n" + "\n".join(errors)
+            await interaction.response.send_message(error_message, ephemeral=True)
+            return
 
-    if warning_text != "No warnings":
-        await interaction.response.send_message(f"Warning: {warning_text}. Changes will be saved, but may be truncated in some displays.", ephemeral=True)
-    else:
         await interaction.response.defer(ephemeral=True)
 
-    try:
         new_finalized_ad = {
             'index': self.index,
             'headline': new_headline,
@@ -728,7 +726,7 @@ async def on_submit(self, interaction: discord.Interaction):
                 self.view.finalized_ad_texts.append(new_finalized_ad)
                 
                 embed = self.view.get_embed()
-                await interaction.edit_original_message(embed=embed, view=self.view)
+                await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
                 await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to the database successfully!", ephemeral=True)
             else:
                 await interaction.followup.send("No changes were made to the database.", ephemeral=True)
@@ -740,10 +738,13 @@ async def on_submit(self, interaction: discord.Interaction):
             if result.inserted_id:
                 self.view.finalized_ad_texts.append(new_finalized_ad)
                 embed = self.view.get_embed()
-                await interaction.edit_original_message(embed=embed, view=self.view)
+                await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self.view)
                 await interaction.followup.send(f"Ad {self.index + 1} finalized and saved to a new document in the database.", ephemeral=True)
             else:
                 await interaction.followup.send(f"Failed to save ad to the database.", ephemeral=True)
 
+        if warning_text != "No warnings":
+            await interaction.followup.send(f"Warning: {warning_text}. Changes have been saved, but may be truncated in some displays.", ephemeral=True)
+
     except Exception as e:
-        await interaction.followup.send(f"An error occurred while updating the database: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
