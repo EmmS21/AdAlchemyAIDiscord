@@ -574,6 +574,7 @@ class AdTextView(View):
         self.collection = collection
         self.current_page = 0
         self.total_ads = min(len(self.headlines), len(self.descriptions))
+        self.current_type = "new" 
         
         self.previous_button = Button(style=ButtonStyle.gray, disabled=True)
         self.previous_button.label = "Previous"
@@ -585,7 +586,18 @@ class AdTextView(View):
         self.previous_button.callback = self.previous_callback
         self.next_button.callback = self.next_callback
         self.edit_button.callback = self.edit_callback
-        
+
+        # Create select menu for ad text type
+        self.ad_type_select = discord.ui.Select(
+            placeholder="Choose Ad Text Type",
+            options=[
+                discord.SelectOption(label="New Ad Text", value="new"),
+                discord.SelectOption(label="Finalized Ad Text", value="finalized")
+            ]
+        )
+        self.ad_type_select.callback = self.ad_type_callback
+
+        self.add_item(self.ad_type_select)
         self.add_item(self.previous_button)
         self.add_item(self.next_button)
         self.add_item(self.edit_button)

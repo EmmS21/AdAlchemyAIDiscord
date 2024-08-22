@@ -438,8 +438,9 @@ async def adtext(interaction: discord.Interaction):
                 if latest_document and 'ad_variations' in latest_document:
                     ad_variations = latest_document['ad_variations']
                     finalized_ad_texts = latest_document.get('finalized_ad_text', [])
+                    last_update = latest_document.get('last_update', 'N/A')
                     
-                    view = AdTextView(ad_variations, finalized_ad_texts, business_collection)
+                    view = AdTextView(ad_variations, finalized_ad_texts, business_collection, last_update)
                     embed = view.get_embed()
                     await interaction.response.send_message(embed=embed, view=view)
                 else:
