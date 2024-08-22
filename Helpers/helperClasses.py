@@ -602,7 +602,7 @@ class AdTextView(View):
         self.add_item(self.previous_button)
         self.add_item(self.next_button)
         self.add_item(self.edit_button)
-        
+
     async def ad_type_callback(self, interaction: discord.Interaction):
         self.current_type = self.ad_type_select.values[0]
         self.current_page = 0
@@ -640,16 +640,23 @@ class AdTextView(View):
         await interaction.response.edit_message(embed=embed, view=self)
 
     def get_embed(self):
-        finalized_ad = next((fad for fad in self.finalized_ad_texts if fad['index'] == self.current_page), None)
-        
-        if finalized_ad:
-            title = f"Ad Variation {self.current_page + 1} (Finalized)"
-            headline = finalized_ad['headline']
-            description = finalized_ad['description']
-        else:
+        if self.current_type == "new":
             title = f"Ad Variation {self.current_page + 1}"
             headline = self.headlines[self.current_page]
             description = self.descriptions[self.current_page]
+            footer_text = f"Ad {self.current_page + 1} of {self.total_ads} | Last Update: {self.last_update}"
+        else:
+            finalized_ad = next((fad for fad in self.finalized_ad_texts if fad['index'] == self.current_page), None)
+            if finalized_ad:
+                title = f"Finalized Ad Variation {self.current_page + 1}"
+                headline = finalized_ad['headline']
+                description = finalized_ad['description']
+                footer_text = f"Ad {self.current_page + 1} of {len(self.finalized_ad_texts)}"
+            else:
+                title = f"Ad Variation {self.current_page + 1} (Not Finalized)"
+                headline = self.headlines[self.current_page]
+                description = self.descriptions[self.current_page]
+                footer_text = f"Ad {self.current_page + 1} of {self.total_ads}"
 
         embed = Embed(title=title, color=discord.Color.blue())
         embed.add_field(name="Headline", value=headline, inline=False)
