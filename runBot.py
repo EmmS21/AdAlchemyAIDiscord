@@ -9,8 +9,7 @@ from collections import defaultdict
 import re
 from pathlib import Path
 import logging
-
-
+from datetime import datetime, timezone
 
 dotenv.load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -103,7 +102,8 @@ async def on_guild_join(guild):
             "webhook_url": webhook_url,
             "business_name": None,
             "website_link": None,
-            "onboarded": False
+            "onboarded": False,
+            "created_at": datetime.now(timezone.utc)
         }
         mappings_collection.insert_one(new_user_data)
 
