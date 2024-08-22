@@ -391,8 +391,10 @@ class KeywordPaginationView(discord.ui.View):
         self.selected_keywords_dict = {}  
         latest_document = get_latest_document(self.collection)
         if latest_document and 'selected_keywords' in latest_document:
-            self.selected_keywords = {kw['text']: kw for kw in latest_document['selected_keywords']}
+            self.selected_keywords = self._normalize_keywords(latest_document['selected_keywords'])
         
+        self.selected_keywords_dict = {kw['text']: kw for kw in self.selected_keywords}
+
         # Create persistent buttons
         self.previous_button = discord.ui.Button(label="Previous", style=ButtonStyle.gray, disabled=True)
         self.next_button = discord.ui.Button(label="Next", style=ButtonStyle.gray)
