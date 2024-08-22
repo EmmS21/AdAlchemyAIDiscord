@@ -523,21 +523,43 @@ class KeywordPaginationView(discord.ui.View):
         return embed
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.data['custom_id'].startswith('toggle_'):
-            index = int(interaction.data['custom_id'].split('_')[1])
-            keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
-            keyword = keywords[index]
-            if keyword['text'] in self.selected_keywords_dict:
-                del self.selected_keywords_dict[keyword['text']]
-            else:
-                self.selected_keywords_dict[keyword['text']] = {
-                    'text': keyword['text'],
-                    'avg_monthly_searches': keyword.get('avg_monthly_searches', 'N/A'),
-                    'competition': keyword.get('competition', 'N/A')
-                }
-            await self.update_message(interaction)
-            return False
-        return True   
+            if interaction.data['custom_id'].startswith('toggle_'):
+                index = int(interaction.data['custom_id'].split('_')[1])
+                keywords = self.selected_keywords if self.current_keyword_type == "selected" else self.new_keywords
+                
+                # Convert keywords to a list if it's a dictionary
+                if isinstance(keywords, dict):
+                    keywords_list = list(keywords.items())
+                else:
+                    keywords_list = keywords
+                
+                if index < len(keywords_list):
+                    keyword = keywords_list[index]
+                    
+                    if isinstance(keyword, tuple):  # If keywords was originally a dict
+                        keyword_text = keyword[0]
+                        keyword_data = keyword[1]
+                    elif isinstance(keyword, dict) and 'text' in keyword:
+                        keyword_text = keyword['text']
+                        keyword_data = keyword
+                    elif isinstance(keyword, str):
+                        keyword_text = keyword
+                        keyword_data = {'text': keyword}
+                    else:
+                        return False  # Invalid keyword format
+                    
+                    if keyword_text in self.selected_keywords_dict:
+                        del self.selected_keywords_dict[keyword_text]
+                    else:
+                        self.selected_keywords_dict[keyword_text] = {
+                            'text': keyword_text,
+                            'avg_monthly_searches': keyword_data.get('avg_monthly_searches', 'N/A'),
+                            'competition': keyword_data.get('competition', 'N/A')
+                        }
+                    
+                    await self.update_message(interaction)
+                return False
+            return True 
      
 class AdTextView(View):
     def __init__(self, ad_variations, finalized_ad_texts, collection):
