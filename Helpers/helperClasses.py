@@ -187,7 +187,7 @@ class ResearchPathsView(View):
         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
         business_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "marketing_agent", self.business_name.lower())
         
-        if business_collection:
+        if business_collection is not None:
             result = business_collection.update_one(
                 {},
                 {"$push": {"list_of_paths_taken": new_path}},
