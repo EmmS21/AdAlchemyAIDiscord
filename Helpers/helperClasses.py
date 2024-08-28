@@ -569,8 +569,8 @@ class AdTextView(View):
     def __init__(self, ad_variations, finalized_ad_texts, collection, last_update):
         super().__init__()
         self.ad_variations = ad_variations
-        self.headlines = [ad['headline'] for ad in ad_variations]
-        self.descriptions = [ad['description'] for ad in ad_variations]
+        self.headlines = [variation['headlines'] for variation in ad_variations]
+        self.descriptions = [variation['descriptions'] for variation in ad_variations]
         self.finalized_ad_texts = finalized_ad_texts
         self.collection = collection
         self.last_update = last_update
@@ -705,21 +705,32 @@ class AdTextView(View):
     def get_embed(self):
         if self.current_type == "new":
             title = f"Ad Variation {self.current_page + 1}"
-            headline = self.headlines[self.current_page]
-            description = self.descriptions[self.current_page]
-            footer_text = f"Ad {self.current_page + 1} of {self.total_ads} | Last Update: {self.last_update}"
+            if self.current_page < len(self.ad_variations):
+                current_variation = self.ad_variations[self.current_page]
+                headlines = current_variation['headlines']
+                descriptions = current_variation['descriptions']                
+                headline = headlines[self.current_subindex % len(headlines)]
+                description = descriptions[self.current_subindex % len(descriptions)]            
+                footer_text = f"Ad {self.current_page + 1} of {self.total_ads} | Last Update: {self.last_update}"
+            else: 
+                headline = "No headline"
+                description = "No description"
+                footer_text = f"Ad {self.current_page + 1} of {self.total_ads} | Last Update: {self.last_update}"
         else:
             finalized_ad = next((fad for fad in self.finalized_ad_texts if fad['index'] == self.current_page), None)
             if finalized_ad:
                 title = f"Finalized Ad Variation {self.current_page + 1}"
-                headline = finalized_ad['headline']
-                description = finalized_ad['description']
-                footer_text = f"Ad {self.current_page + 1} of {len(self.finalized_ad_texts)}"
-            else:
-                title = f"Ad Variation {self.current_page + 1} (Not Finalized)"
-                headline = self.headlines[self.current_page]
-                description = self.descriptions[self.current_page]
-                footer_text = f"Ad {self.current_page + 1} of {self.total_ads}"
+                if self.current_page < len(self.ad_variations):
+                    current_variation = self.ad_variations[self.current_page]
+                    headlines = current_variation['headlines']
+                    descriptions = current_variation['descriptions']
+                    headline = headlines[self.current_subindex % len(headlines)]
+                    description = descriptions[self.current_subindex % len(descriptions)]
+                    footer_text = f"Ad {self.current_page + 1} of {self.total_ads} | Variation {self.current_subindex + 1} of {len(headlines)}"
+                else:
+                    headline = 'No headline'
+                    description = 'No description'
+                    footer_text = f"Ad {self.current_page + 1} of {self.total_ads}"
 
         embed = Embed(title=title, color=discord.Color.blue())
         embed.add_field(name="Headline", value=headline, inline=False)
