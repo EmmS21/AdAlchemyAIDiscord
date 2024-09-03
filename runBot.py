@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 import logging
 from datetime import datetime, timezone
+import json
 
 dotenv.load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -455,5 +456,81 @@ async def adtext(interaction: discord.Interaction):
             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
             ephemeral=True
         )
+
+@tree.command(name="uploadcredentials", description="Upload your Google Ads API credentials")
+async def upload_credentials(interaction: discord.Interaction, credentials_file: discord.Attachment, customer_id: str):
+    user_id = interaction.user.id
+    is_onboarded = await check_onboarded_status(user_id)
+    
+    if is_onboarded:
+        await interaction.response.defer(thinking=True)
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+        user_record = mappings_collection.find_one({"owner_ids": user_id})
+        
+        if user_record and "business_name" in user_record:
+            business_name = user_record["business_name"]
+            
+            if not credentials_file.filename.endswith('.json'):
+                await interaction.followup.send("Error: Please upload a JSON file.")
+                return
+            
+            try:
+                credentials_content = await credentials_file.read()
+                credentials_json = json.loads(credentials_content.decode('utf-8'))
+                required_fields = ['client_id', 'project_id', 'auth_uri', 'auth_provider_x509_cert_url', 'client_secret', 'use_proto_plus']
+                for field in required_fields:
+                    if field not in credentials_json:
+                        await interaction.followup.send(f"Error: Missing required field '{field}' in credentials file.")
+                        return
+
+                if not isinstance(credentials_json['use_proto_plus'], bool):
+                    await interaction.followup.send("Error: 'use_proto_plus' must be a boolean value.")
+                    return
+                
+                credentials_json['developer_token'] = os.getenv('DEVELOPER_TOKEN')
+                credentials_json['customer_id'] = customer_id
+                credentials_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "credentials", business_name)
+                credentials_collection.update_one({}, {"$set": {"credentials": credentials_json}}, upsert=True)
+                await interaction.followup.send("Credentials uploaded and saved successfully.")
+            except json.JSONDecodeError:
+                await interaction.followup.send("Error: Uploaded file does not contain valid JSON.")
+            except Exception as e:
+                await interaction.followup.send(f"An unexpected error occurred: {str(e)}")
+            
+        else:
+            await interaction.followup.send("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
+            return     
+    else:
+        calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
+        await interaction.response.send_message(
+            f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
+            ephemeral=True
+        )
+
+# @tree.command(name="createad", description="Create a new ad or add to an existing campaign")
+# async def create_ad(interaction: discord.Interaction):
+#     await interaction.response.defer(thinking=True)
+#     user_id = interaction.user.id
+#     is_onboarded = await check_onboarded_status(user_id)
+    
+#     if is_onboarded:
+#         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+#         mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+#         user_record = mappings_collection.find_one({"owner_ids": user_id})
+        
+#         if user_record and "business_name" in user_record:
+#             business_name = user_record["business_name"]
+#             business_website = user_record["website_link"]
+
+
+#         else:
+#             await interaction.response.send_message("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
+#     else:
+#         calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
+#         await interaction.response.send_message(
+#             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
+#             ephemeral=True
+#         )
 
 client.run(os.getenv('DISCORD_TOKEN'))
