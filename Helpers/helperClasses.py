@@ -1,11 +1,12 @@
+from datetime import datetime
+import aiohttp
 import discord
 from discord import ButtonStyle, Embed, TextStyle
 from discord.ui import Button, View, TextInput, Modal
 from collections import defaultdict
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
-from Helpers.helperfuncs import get_latest_document
+from Helpers.helperfuncs import fetch_ad_variations, get_latest_document
 import os
-from pymongo.errors import WriteError
 
 guild_business_data = defaultdict(dict)
 guild_states = {}
@@ -495,7 +496,6 @@ class KeywordPaginationView(discord.ui.View):
         start = self.current_page * self.per_page
         end = start + self.per_page
         
-        # Convert keywords to a list if it's a dictionary
         if isinstance(keywords, dict):
             keywords_list = list(keywords.items())
         else:
@@ -508,7 +508,7 @@ class KeywordPaginationView(discord.ui.View):
         embed.description = "Use the menu above to switch between keyword categories."
 
         for keyword in current_keywords:
-            if isinstance(keyword, tuple):  # If keywords is a dict
+            if isinstance(keyword, tuple): 
                 key, value = keyword
                 status = "✅" if key in self.selected_keywords_dict else "❌"
                 embed.add_field(name=f"{key} [{status}]", value=str(value), inline=False)
@@ -540,7 +540,7 @@ class KeywordPaginationView(discord.ui.View):
                 if index < len(keywords_list):
                     keyword = keywords_list[index]
                     
-                    if isinstance(keyword, tuple):  # If keywords was originally a dict
+                    if isinstance(keyword, tuple):  
                         keyword_text = keyword[0]
                         keyword_data = keyword[1]
                     elif isinstance(keyword, dict) and 'text' in keyword:
@@ -550,7 +550,7 @@ class KeywordPaginationView(discord.ui.View):
                         keyword_text = keyword
                         keyword_data = {'text': keyword}
                     else:
-                        return False  # Invalid keyword format
+                        return False 
                     
                     if keyword_text in self.selected_keywords_dict:
                         del self.selected_keywords_dict[keyword_text]
@@ -767,7 +767,7 @@ class AdEditModal(Modal):
             style=TextStyle.paragraph,
             default=description,
             required=True,
-            max_length=200  # Allow longer input, but warn about it
+            max_length=200  
         )
 
         self.add_item(self.warning)
@@ -847,3 +847,360 @@ class AdEditModal(Modal):
 
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
+
+class AuthCompletedView(discord.ui.View):
+    def __init__(self, auth_url, state, client_id, customer_id, credentials):
+        super().__init__()
+        self.auth_url = auth_url
+        self.state = state
+        self.client_id = client_id
+        self.customer_id = customer_id
+        self.credentials = credentials
+        self.refresh_token = None
+
+    @discord.ui.button(label="Completed Authorization", style=discord.ButtonStyle.green)
+    async def auth_completed(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+        user_record = mappings_collection.find_one({"owner_ids": interaction.user.id})
+        if user_record and "business_name" in user_record:
+            business_name = user_record["business_name"]
+
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'https://googleadsapicalls.onrender.com/check_auth_status/{self.state}') as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if result.get("status") == "complete":
+                        self.refresh_token = result.get("refresh_token")
+                        if self.refresh_token:
+                            CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+                            credentials_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "credentials", business_name)
+                            
+                            update_result = credentials_collection.update_one(
+                                {"credentials.client_id": self.client_id},
+                                {"$set": {"credentials.refresh_token": self.refresh_token}},
+                                upsert=False
+                            )
+                            if update_result.modified_count > 0:
+                                self.enable_next_button()
+                                await interaction.followup.send("Authentication successful! Click 'Next' to view your campaigns.", view=self, ephemeral=True)
+                            else:
+                                await interaction.followup.send("Failed to update credentials with refresh token. No documents were modified.", ephemeral=True)
+                        else:
+                            await interaction.followup.send("Refresh token not found in the response. Please try authorizing again.", ephemeral=True)
+                    else:
+                        await interaction.followup.send("Authorization not yet complete. Please make sure you've completed the authorization process and try again.", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"Error: Received status code {response.status} from authentication server.", ephemeral=True)
+
+    @discord.ui.button(label="Reauthorize", style=discord.ButtonStyle.secondary)
+    async def reauthorize(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"Please try authorizing again using this link: {self.auth_url}", ephemeral=True)
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, disabled=True)
+    async def next_step(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        self.credentials['web']['refresh_token'] = self.refresh_token
+        request_data = {
+            "customer_id": self.customer_id,
+            "credentials": self.credentials
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post('https://googleadsapicalls.onrender.com/get_campaigns', json=request_data) as response:
+                if response.status == 200:
+                    campaigns = await response.json()
+                    if campaigns:
+                        campaign_list = "\n".join([f"- {campaign['name']} (ID: {campaign['id']})" for campaign in campaigns])
+                        await interaction.followup.send(f"Here are your campaigns:\n{campaign_list}", ephemeral=True)
+                    else:
+                        await interaction.followup.send("You don't have any campaigns yet.", ephemeral=True)
+                else:
+                    error_details = await response.text()
+                    await interaction.followup.send(f"Failed to retrieve campaigns. Error: {error_details}", ephemeral=True)
+
+    def enable_next_button(self):
+        for item in self.children:
+            if isinstance(item, discord.ui.Button) and item.label == "Next":
+                item.disabled = False
+                break
+
+class CampaignCreationModal(discord.ui.Modal, title='Create New Campaign'):
+    def __init__(self):
+        super().__init__()
+        self.campaign_name = discord.ui.TextInput(label="Campaign Name", style=discord.TextStyle.short, required=True)
+        self.daily_budget = discord.ui.TextInput(label="Daily Budget (in dollars)", style=discord.TextStyle.short, required=True)
+        self.start_date = discord.ui.TextInput(label="Start Date (YYYY-MM-DD)", style=discord.TextStyle.short, required=True)
+        self.end_date = discord.ui.TextInput(label="End Date (YYYY-MM-DD)", style=discord.TextStyle.short, required=True)
+        self.add_item(self.campaign_name)
+        self.add_item(self.daily_budget)
+        self.add_item(self.start_date)
+        self.add_item(self.end_date)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            daily_budget = float(self.daily_budget.value)
+            start_date = datetime.datetime.strptime(self.start_date.value, "%Y-%m-%d").date()
+            end_date = datetime.datetime.strptime(self.end_date.value, "%Y-%m-%d").date()
+            
+            campaign_data = {
+                "campaign_name": self.campaign_name.value,
+                "daily_budget": daily_budget,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "customer_id": interaction.client.customer_id,
+                "credentials": interaction.client.credentials
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post('https://googleadsapicalls.onrender.com//create_campaign', json=campaign_data) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        await interaction.followup.send(f"Campaign created successfully! Campaign ID: {result['campaign_id']}", ephemeral=True)
+                        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+                        mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+                        user_record = mappings_collection.find_one({"owner_ids": interaction.user.id})        
+                        if user_record and "business_name" in user_record:
+                            business_name = user_record["business_name"]
+
+                        ad_variations = await fetch_ad_variations(business_name)
+                        if ad_variations and 'ad_variation' in ad_variations:
+                            view = AdVariationView(
+                                ad_variations['ad_variation'],
+                                interaction.client.customer_id,
+                                interaction.client.credentials,
+                                self.campaign_name.value
+                            )
+                            embed = view.get_embed()
+                            await interaction.followup.send(
+                                "Please review and select the ad variations for this campaign:",
+                                embed=embed,
+                                view=view,
+                                ephemeral=True
+                            )
+                        else:
+                            await interaction.followup.send(
+                                "Failed to fetch ad variations. Please try again later.",
+                                ephemeral=True
+                            )
+                    else:
+                        error_details = await response.text()
+                        await interaction.followup.send(f"Failed to create campaign. Error: {error_details}", ephemeral=True)
+        except ValueError as e:
+            await interaction.followup.send(f"Invalid input: {str(e)}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
+
+class AdVariationView(View):
+    def __init__(self, ad_variations, customer_id, credentials, campaign_name):
+        super().__init__()
+        self.ad_variations = ad_variations
+        self.customer_id = customer_id
+        self.credentials = credentials
+        self.campaign_name = campaign_name
+        self.current_index = 0
+        self.selected_ads = set()
+
+        self.add_item(Button(label="Previous", style=discord.ButtonStyle.gray, custom_id="previous"))
+        self.add_item(Button(label="Next", style=discord.ButtonStyle.gray, custom_id="next"))
+        self.add_item(Button(label="Select", style=discord.ButtonStyle.green, custom_id="select"))
+        self.add_item(Button(label="Edit", style=discord.ButtonStyle.primary, custom_id="edit"))
+        self.add_item(Button(label="Finish", style=discord.ButtonStyle.blurple, custom_id="finish"))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.data["custom_id"] == "previous":
+            self.current_index = max(0, self.current_index - 1)
+        elif interaction.data["custom_id"] == "next":
+            self.current_index = min(len(self.ad_variations) - 1, self.current_index + 1)
+        elif interaction.data["custom_id"] == "select":
+            if self.current_index in self.selected_ads:
+                self.selected_ads.remove(self.current_index)
+            else:
+                self.selected_ads.add(self.current_index)
+        elif interaction.data["custom_id"] == "edit":
+            modal = AdVariationEditModal(self.ad_variations[self.current_index], self.current_index)
+            await interaction.response.send_modal(modal)
+            await modal.wait()
+            if modal.result:
+                index, updated_ad = modal.result
+                self.ad_variations[index] = updated_ad
+                self.selected_ads.add(index)
+                await self.finish_selection(interaction)
+            return True
+        elif interaction.data["custom_id"] == "finish":
+            await self.finish_selection(interaction)
+            return True
+
+        await self.update_message(interaction)
+        return True
+    
+    async def open_edit_modal(self, interaction: discord.Interaction):
+        current_ad = self.ad_variations[self.current_index]
+        modal = AdVariationEditModal(current_ad, self.current_index)
+        await interaction.response.send_modal(modal)
+
+    async def on_modal_submit(self, interaction: discord.Interaction, index: int, updated_ad: dict):
+        self.ad_variations[index] = updated_ad
+        self.selected_ads.add(index)
+        await interaction.response.send_message(f"Ad Variation {index + 1} updated and selected.", ephemeral=True)
+        await self.finish_selection(interaction)
+
+
+    async def update_message(self, interaction: discord.Interaction):
+        embed = self.get_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    def get_embed(self):
+        ad = self.ad_variations[self.current_index]
+        embed = discord.Embed(title=f"Ad Variation {self.current_index + 1}", color=discord.Color.blue())
+        embed.add_field(name="Headlines", value="\n".join(ad["headlines"]), inline=False)
+        embed.add_field(name="Descriptions", value="\n".join(ad["descriptions"]), inline=False)
+        embed.add_field(name="Keywords", value=", ".join(ad["keywords"]), inline=False)
+        embed.set_footer(text=f"Ad {self.current_index + 1} of {len(self.ad_variations)} | {'Selected' if self.current_index in self.selected_ads else 'Not Selected'}")
+        return embed
+
+    async def finish_selection(self, interaction: discord.Interaction):
+        if not self.selected_ads:
+            await interaction.followup.send("No ads selected. Please select at least one ad.", ephemeral=True)
+            return
+
+        selected_variations = [self.ad_variations[i] for i in self.selected_ads]
+        view = ConfirmSelectedAdsView(selected_variations, self.customer_id, self.credentials, self.campaign_name)
+        embeds = view.get_embeds()
+        await interaction.followup.send("Here are your selected ads:", embeds=embeds, view=view, ephemeral=True)
+        self.stop()
+
+class AdVariationEditModal(discord.ui.Modal):
+    def __init__(self, ad, index):
+        super().__init__(title=f"Edit Ad Variation {index + 1}")
+        self.ad = ad
+        self.index = index
+        self.result = None
+
+        self.headlines = discord.ui.TextInput(
+            label="Headlines (comma-separated)",
+            style=discord.TextStyle.paragraph,
+            default=", ".join(ad["headlines"]),
+            required=True,
+            max_length=1000
+        )
+        self.add_item(self.headlines)
+
+        self.descriptions = discord.ui.TextInput(
+            label="Descriptions (comma-separated)",
+            style=discord.TextStyle.paragraph,
+            default=", ".join(ad["descriptions"]),
+            required=True,
+            max_length=1000
+        )
+        self.add_item(self.descriptions)
+
+        self.keywords = discord.ui.TextInput(
+            label="Keywords (comma-separated)",
+            style=discord.TextStyle.paragraph,
+            default=", ".join(ad["keywords"]),
+            required=True,
+            max_length=1000
+        )
+        self.add_item(self.keywords)
+
+    def get_warning_text(self, headlines, descriptions):
+        warnings = []
+        for i, headline in enumerate(headlines):
+            if len(headline) > 30:
+                warnings.append(f"Headline {i+1} exceeds limit by {len(headline) - 30} characters")
+        for i, description in enumerate(descriptions):
+            if len(description) > 90:
+                warnings.append(f"Description {i+1} exceeds limit by {len(description) - 90} characters")
+        return " | ".join(warnings) if warnings else "No warnings"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        new_headlines = [h.strip() for h in self.headlines.value.split(",")]
+        new_descriptions = [d.strip() for d in self.descriptions.value.split(",")]
+        new_keywords = [k.strip() for k in self.keywords.value.split(",")]
+
+        warning_text = self.get_warning_text(new_headlines, new_descriptions)
+        if warning_text != "No warnings":
+            await interaction.response.send_message(f"Cannot submit. {warning_text}. Please edit and try again.", ephemeral=True)
+            return None, None
+
+        updated_ad = {
+            "headlines": new_headlines,
+            "descriptions": new_descriptions,
+            "keywords": new_keywords
+        }
+        
+        self.result = (self.index, updated_ad)
+        await interaction.response.defer(ephemeral=True)
+
+class ConfirmSelectedAdsView(discord.ui.View):
+    def __init__(self, selected_ads, customer_id, credentials, campaign_name):
+        super().__init__()
+        self.selected_ads = selected_ads
+        self.customer_id = customer_id
+        self.credentials = credentials
+        self.campaign_name = campaign_name
+
+        self.add_item(discord.ui.Button(label="Confirm", style=discord.ButtonStyle.green, custom_id="confirm"))
+        self.add_item(discord.ui.Select(
+            placeholder="Select an ad to delete",
+            options=[discord.SelectOption(label=f"Ad {i+1}", value=str(i)) for i in range(len(selected_ads))],
+            custom_id="delete"
+        ))
+
+    def get_embeds(self):
+            embeds = []
+            for i, ad in enumerate(self.selected_ads):
+                embed = discord.Embed(title=f"Selected Ad {i+1}", color=discord.Color.blue())
+                embed.add_field(name="Headlines", value=ad["headlines"], inline=False)
+                embed.add_field(name="Descriptions", value=ad["descriptions"], inline=False)
+                embed.add_field(name="Keywords", value=", ".join(ad["keywords"]), inline=False)
+                embeds.append(embed)
+            return embeds
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+            if interaction.data["custom_id"] == "confirm":
+                await interaction.response.send_message("Ads confirmed and will be used for the campaign!", ephemeral=True)
+                await self.create_ads(interaction)
+                self.stop()
+            elif interaction.data["custom_id"] == "delete":
+                index = int(interaction.data["values"][0])
+                del self.selected_ads[index]
+                if not self.selected_ads:
+                    await interaction.response.send_message("All ads deleted. Returning to ad selection.", ephemeral=True)
+                    self.stop()
+                else:
+                    embeds = self.get_embeds()
+                    await interaction.response.edit_message(content="Here are your updated selected ads:", embeds=embeds, view=self)
+            return True
+
+    async def create_ads(self, interaction: discord.Interaction):
+        await interaction.followup.send("Creating ads, please wait...", ephemeral=True)
+        success_count = 0
+        for ad in self.selected_ads:
+            success = await self.create_ad(ad)
+            if success:
+                success_count += 1
+        await interaction.followup.send(f"{success_count} out of {len(self.selected_ads)} ads were created successfully!", ephemeral=True)
+
+    async def create_ad(self, ad):
+        cleaned_campaign_name = self.campaign_name.strip().lstrip('-').strip()
+        ad_data = {
+            "customer_id": self.customer_id,
+            "campaign_name": cleaned_campaign_name,
+            "headlines": ad["headlines"],
+            "descriptions": ad["descriptions"],
+            "keywords": ad["keywords"],
+            "credentials": self.credentials
+        }
+        async with aiohttp.ClientSession() as session:
+            print('ad_data', ad_data)
+            async with session.post('https://googleadsapicalls.onrender.com/create_ad', json=ad_data) as response:
+                if response.status == 200:
+                    return True
+                else:
+                    print(f"Failed to create ad: {await response.text()}")
+                    return False

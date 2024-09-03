@@ -1,6 +1,7 @@
+import aiohttp
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
-from Helpers.helperfuncs import website_exists_in_db, get_latest_document
-from Helpers.helperClasses import ConfirmPricing, BusinessView, ResearchPathsView, UserPersonaView, KeywordPaginationView, AdTextView
+from Helpers.helperfuncs import create_campaign_flow, get_campaigns, website_exists_in_db, get_latest_document
+from Helpers.helperClasses import ConfirmPricing, BusinessView, ResearchPathsView, UserPersonaView, KeywordPaginationView, AdTextView, AuthCompletedView
 import discord
 from discord import app_commands, Embed
 import os
@@ -391,7 +392,7 @@ async def keywords(interaction: discord.Interaction):
         selected_keywords = []
         new_keywords = []
         title = ""
-        last_update = latest_document.get('last_update', 'N/A')  # Extract last_update
+        last_update = latest_document.get('last_update', 'N/A') 
 
         
         if 'selected_keywords' in latest_document and latest_document['selected_keywords']:
@@ -508,29 +509,124 @@ async def upload_credentials(interaction: discord.Interaction, credentials_file:
             ephemeral=True
         )
 
-# @tree.command(name="createad", description="Create a new ad or add to an existing campaign")
-# async def create_ad(interaction: discord.Interaction):
-#     await interaction.response.defer(thinking=True)
-#     user_id = interaction.user.id
-#     is_onboarded = await check_onboarded_status(user_id)
+@tree.command(name="createad", description="Create a new ad or add to an existing campaign")
+async def create_ad(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+    user_id = interaction.user.id
+    is_onboarded = await check_onboarded_status(user_id)
     
-#     if is_onboarded:
-#         CONNECTION_STRING = os.getenv("CONNECTION_STRING")
-#         mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
-#         user_record = mappings_collection.find_one({"owner_ids": user_id})
+    if is_onboarded:
+        CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+        mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+        user_record = mappings_collection.find_one({"owner_ids": user_id})
         
-#         if user_record and "business_name" in user_record:
-#             business_name = user_record["business_name"]
-#             business_website = user_record["website_link"]
+        if user_record and "business_name" in user_record:
+            business_name = user_record["business_name"]
+            business_website = user_record["website_link"]
+            credentials_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "credentials", business_name)
+            credentials_document = credentials_collection.find_one()
+            if not credentials_document or 'credentials' not in credentials_document:
+                await interaction.followup.send("Please use /uploadcredentials to upload your Google Ads credentials.")
+                return
+            credentials = credentials_document['credentials']
+            customer_id = credentials.pop('customer_id', None)
 
+            if not customer_id:
+                await interaction.followup.send("Error: Customer ID not found in credentials.", ephemeral=True)
+                return
+            
+            if 'web' not in credentials:
+                web_credentials = {
+                    "web": {
+                        key: value for key, value in credentials.items() 
+                        if key not in ['developer_token', 'use_proto_plus', 'customer_id']
+                    }
+                }
+                web_credentials['developer_token'] = credentials.get('developer_token')
+                web_credentials['use_proto_plus'] = credentials.get('use_proto_plus', True)
+            else:
+                web_credentials = credentials
 
-#         else:
-#             await interaction.response.send_message("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
-#     else:
-#         calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
-#         await interaction.response.send_message(
-#             f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
-#             ephemeral=True
-#         )
+            options = [
+                discord.SelectOption(
+                    label="Add to existing campaign",
+                    value="existing",
+                    description="Add your ad to an existing campaign you have"
+                ),
+                discord.SelectOption(
+                    label="Create a new campaign",
+                    value="new",
+                    description="Create a new campaign for your ad"
+                )
+            ]
+            
+            select_menu = discord.ui.Select(
+                placeholder="Choose an option",
+                options=options
+            )
+
+            async def select_callback(interaction: discord.Interaction):
+                await interaction.response.defer(ephemeral=True)
+                data = {
+                    "customer_id": customer_id,
+                    "credentials": web_credentials
+                }
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post('https://googleadsapicalls.onrender.com/authenticate', json=data) as response:
+                            if response.status == 200:
+                                result_text = await response.text()
+                                try: 
+                                    result = json.loads(result_text)
+                                except json.JSONDecodeError:
+                                    await interaction.followup.send(f"Unexpected response format: {result_text}", ephemeral=True)
+                                    return
+                                if "refresh_token" in result:
+                                    await interaction.followup.send("Authentication successful. Proceeding to get campaigns, please wait...", ephemeral=True)
+                                    if isinstance(result, str):
+                                        try:
+                                            result = json.loads(result)
+                                        except json.JSONDecodeError:
+                                            await interaction.followup.send("Error: Invalid authentication response format", ephemeral=True)
+                                            return
+                                        
+                                    complete_credentials = {
+                                        **result,
+                                        "developer_token": web_credentials.get("developer_token"),
+                                        "scopes": ['https://www.googleapis.com/auth/adwords']
+                                    }
+                                    if select_menu.values[0] == "existing":
+                                        await get_campaigns(interaction, customer_id, complete_credentials, business_name)
+                                    else:
+                                        await create_campaign_flow(interaction, customer_id, complete_credentials)
+                                elif "auth_url" in result and "state" in result:
+                                    auth_url = result["auth_url"]
+                                    state = result["state"]
+                                    view = AuthCompletedView(auth_url, state, credentials['client_id'], customer_id, web_credentials)
+                                    await interaction.followup.send(
+                                        f"Please authorize access to your Google Ads using this link: {auth_url}\n"
+                                        "After authorization, click the 'Completed Authorization' button below.",
+                                        view=view,
+                                        ephemeral=True
+                                    )
+                                else:
+                                    await interaction.followup.send("Unexpected authentication response. Please try again.", ephemeral=True)
+                            else:
+                                error_details = await response.text()
+                                await interaction.followup.send(f"Error: Received status code {response.status} from authentication server. Details: {error_details}", ephemeral=True)
+                except aiohttp.ClientError as e:
+                    await interaction.followup.send(f"Error communicating with server: {str(e)}", ephemeral=True)
+            select_menu.callback = select_callback
+            view = discord.ui.View()
+            view.add_item(select_menu)
+            await interaction.followup.send("Please select an option:", view=view)
+        else:
+            await interaction.response.send_message("Unable to find your business name. Please make sure you've completed the initial setup.", ephemeral=True)
+    else:
+        calendly_link = "https://calendly.com/emmanuel-emmanuelsibanda/30min"
+        await interaction.response.send_message(
+            f"You don't have access to this command yet. Please complete the onboarding process by scheduling a call: {calendly_link}",
+            ephemeral=True
+        )
 
 client.run(os.getenv('DISCORD_TOKEN'))

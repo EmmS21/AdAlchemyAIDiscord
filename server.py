@@ -33,7 +33,5 @@ if __name__ == "__main__":
         
         # Simulate Discord bot initialization (to be replaced with actual bot logic)
         print("Starting Discord bot...")
-        # Placeholder for actual bot initialization
-        # Example: runBot.client.run(os.getenv('DISCORD_TOKEN'))
     except Exception as e:
         print(f"An error occurred: {e}")
