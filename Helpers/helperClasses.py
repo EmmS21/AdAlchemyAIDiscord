@@ -995,7 +995,7 @@ class CampaignCreationModal(discord.ui.Modal, title='Create New Campaign'):
             await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
 
 class AdVariationView(View):
-    def __init__(self, ad_variations, customer_id, credentials, campaign_name):
+    def __init__(self, ad_variations, customer_id, credentials, campaign_name, business_website):
         super().__init__()
         self.ad_variations = ad_variations
         self.customer_id = customer_id
@@ -1003,6 +1003,7 @@ class AdVariationView(View):
         self.campaign_name = campaign_name
         self.current_index = 0
         self.selected_ads = set()
+        self.business_website = business_website
 
         self.add_item(Button(label="Previous", style=discord.ButtonStyle.gray, custom_id="previous"))
         self.add_item(Button(label="Next", style=discord.ButtonStyle.gray, custom_id="next"))
@@ -1068,7 +1069,7 @@ class AdVariationView(View):
             return
 
         selected_variations = [self.ad_variations[i] for i in self.selected_ads]
-        view = ConfirmSelectedAdsView(selected_variations, self.customer_id, self.credentials, self.campaign_name)
+        view = ConfirmSelectedAdsView(selected_variations, self.customer_id, self.credentials, self.campaign_name, self.business_website)
         embeds = view.get_embeds()
         await interaction.followup.send("Here are your selected ads:", embeds=embeds, view=view, ephemeral=True)
         self.stop()
@@ -1137,13 +1138,15 @@ class AdVariationEditModal(discord.ui.Modal):
         await interaction.response.defer(ephemeral=True)
 
 class ConfirmSelectedAdsView(discord.ui.View):
-    def __init__(self, selected_ads, customer_id, credentials, campaign_name):
+    def __init__(self, selected_ads, customer_id, credentials, campaign_name, business_website):
         super().__init__()
         self.selected_ads = selected_ads
         self.customer_id = customer_id
         self.credentials = credentials
         self.campaign_name = campaign_name
+        self.business_website = business_website
 
+        self.add_item(discord.ui.Button(label="Confirm", style=discord.ButtonStyle.green, custom_id="confirm"))
         self.add_item(discord.ui.Button(label="Confirm", style=discord.ButtonStyle.green, custom_id="confirm"))
         self.add_item(discord.ui.Select(
             placeholder="Select an ad to delete",
@@ -1190,6 +1193,7 @@ class ConfirmSelectedAdsView(discord.ui.View):
         cleaned_campaign_name = self.campaign_name.strip().lstrip('-').strip()
         ad_data = {
             "customer_id": self.customer_id,
+            "business_website": self.business_website,
             "campaign_name": cleaned_campaign_name,
             "headlines": ad["headlines"],
             "descriptions": ad["descriptions"],

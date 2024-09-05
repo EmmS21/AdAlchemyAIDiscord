@@ -56,7 +56,7 @@ async def fetch_ad_variations(business_name):
                 print('Error response:', await response.text())
                 return None
 
-async def get_campaigns(interaction: discord.Interaction, customer_id: str, credentials: dict, business_name: str):
+async def get_campaigns(interaction: discord.Interaction, customer_id: str, credentials: dict, business_name: str, business_website: str):
     request_data = {
         "customer_id": customer_id,
         "credentials": {
@@ -111,7 +111,8 @@ async def get_campaigns(interaction: discord.Interaction, customer_id: str, cred
                                             ad_variations['ad_variation'],
                                             customer_id,
                                             credentials,
-                                            selected_campaign['name']
+                                            selected_campaign['name'],
+                                            business_website
                                             )
                                         embed = view.get_embed()
                                         await interaction.followup.send(

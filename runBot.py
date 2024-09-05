@@ -596,7 +596,7 @@ async def create_ad(interaction: discord.Interaction):
                                         "scopes": ['https://www.googleapis.com/auth/adwords']
                                     }
                                     if select_menu.values[0] == "existing":
-                                        await get_campaigns(interaction, customer_id, complete_credentials, business_name)
+                                        await get_campaigns(interaction, customer_id, complete_credentials, business_name, business_website)
                                     else:
                                         await create_campaign_flow(interaction, customer_id, complete_credentials)
                                 elif "auth_url" in result and "state" in result:
