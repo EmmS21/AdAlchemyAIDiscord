@@ -5,7 +5,7 @@ from discord import ButtonStyle, Embed, TextStyle
 from discord.ui import Button, View, TextInput, Modal
 from collections import defaultdict
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
-from Helpers.helperfuncs import fetch_ad_variations, get_latest_document
+import Helpers.helperfuncs as helperfuncs
 import os
 
 guild_business_data = defaultdict(dict)
@@ -392,7 +392,7 @@ class KeywordPaginationView(discord.ui.View):
 
 
         self.selected_keywords_dict = {}  
-        latest_document = get_latest_document(self.collection)
+        latest_document = helperfuncs.get_latest_document(self.collection)
         if latest_document and 'selected_keywords' in latest_document:
             self.selected_keywords = self._normalize_keywords(latest_document['selected_keywords'])
         
@@ -436,7 +436,7 @@ class KeywordPaginationView(discord.ui.View):
 
     async def submit_callback(self, interaction: discord.Interaction):
         selected_keywords_list = list(self.selected_keywords_dict.values())
-        latest_document = get_latest_document(self.collection)
+        latest_document = helperfuncs.get_latest_document(self.collection)
         if latest_document:
             result = self.collection.update_one(
                 {'_id': latest_document['_id']},
@@ -629,7 +629,7 @@ class AdTextView(View):
 
     async def perform_delete(self, interaction: discord.Interaction):
         try:
-            latest_document = get_latest_document(self.collection)
+            latest_document = helperfuncs.get_latest_document(self.collection)
             if not latest_document:
                 await interaction.response.send_message("No document found to delete from.", ephemeral=True)
                 return
@@ -808,7 +808,7 @@ class AdEditModal(Modal):
                 'description': new_description
             }
 
-            latest_document = get_latest_document(self.collection)
+            latest_document = helperfuncs.get_latest_document(self.collection)
 
             if latest_document:
                 if 'finalized_ad_text' not in latest_document or not isinstance(latest_document['finalized_ad_text'], list):
@@ -966,7 +966,7 @@ class CampaignCreationModal(discord.ui.Modal, title='Create New Campaign'):
                         if user_record and "business_name" in user_record:
                             business_name = user_record["business_name"]
 
-                        ad_variations = await fetch_ad_variations(business_name)
+                        ad_variations = await helperfuncs.fetch_ad_variations(business_name)
                         if ad_variations and 'ad_variation' in ad_variations:
                             view = AdVariationView(
                                 ad_variations['ad_variation'],

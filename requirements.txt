@@ -1,3 +1,7 @@
 discord.py
 python-dotenv
 pymongo
+pytest
+pytest-asyncio
+pytest-sugar
+mongomock

@@ -1,8 +1,6 @@
 import aiohttp
 import discord
-
-from Helpers.helperClasses import AdVariationView, CampaignCreationModal
-
+import Helpers.helperClasses as helperClasses
 
 def website_exists_in_db(db, website_link):
     if db is None:
@@ -37,7 +35,7 @@ async def create_campaign_flow(interaction: discord.Interaction, customer_id: st
     class CreateCampaignButton(discord.ui.View):
         @discord.ui.button(label="Create Campaign", style=discord.ButtonStyle.primary)
         async def button_callback(self, button_interaction: discord.Interaction, button: discord.ui.Button):
-            modal = CampaignCreationModal()
+            modal = helperClasses.CampaignCreationModal()
             await button_interaction.response.send_modal(modal)
 
     view = CreateCampaignButton()
@@ -107,7 +105,7 @@ async def get_campaigns(interaction: discord.Interaction, customer_id: str, cred
                                     )
                                     ad_variations = await fetch_ad_variations(business_name)
                                     if ad_variations and 'ad_variation' in ad_variations:
-                                        view = AdVariationView(
+                                        view = helperClasses.AdVariationView(
                                             ad_variations['ad_variation'],
                                             customer_id,
                                             credentials,
