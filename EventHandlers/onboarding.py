@@ -1,5 +1,7 @@
 import re
 from datetime import datetime, timezone
+
+import discord
 from MongoDBConnection.connectMongo import connect_to_mongo_and_get_collection
 import os
 import Helpers.helperClasses as helperClasses
@@ -57,7 +59,8 @@ async def handle_guild_join(guild, guild_onboarded_status, guild_states):
             "onboarded": False,
             "created_at": datetime.now(timezone.utc)
         }
-        mappings_collection.insert_one(new_user_data)
+        if new_user_data["business_name"] is not None:
+            mappings_collection.insert_one(new_user_data)
 
         welcome_message = """
         Hello! I am AdAlchemyAI, a bot to help you get good leads for a cost-effective price for your business by automating the process of setting up, running, and optimizing your Google Ads. I only run ads after you manually approve the keywords I researched, the ad text ideas I generate, and the information I use to carry out my research.
@@ -76,10 +79,15 @@ async def handle_guild_join(guild, guild_onboarded_status, guild_states):
         guild_states[guild.id] = "waiting_for_business_name"
 
 async def handle_message(message, guild_states):
-    if message.author.bot:
-        return
-
-    guild_id = message.guild.id
+    if isinstance(message, discord.WebhookMessage):
+        guild_id = message.guild.id
+        author_id = message.author.id
+    elif message.author.bot and not message.webhook_id:
+        return 
+    else:
+        guild_id = message.guild.id
+        author_id = message.author.id
+    
     current_state = guild_states.get(guild_id)
 
     CONNECTION_STRING = os.getenv("CONNECTION_STRING")

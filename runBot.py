@@ -60,7 +60,12 @@ async def on_guild_join(guild):
 
 @client.event
 async def on_message(message):
-    await onboarding.handle_message(message, guild_states)
+    if message.webhook_id:
+        webhook = await client.fetch_webhook(message.webhook_id)
+        if webhook.name == "onboarding":
+            await onboarding.handle_message(message, guild_states)
+    else:
+        await onboarding.handle_message(message, guild_states)
 
 class HelpView(discord.ui.View):
     def __init__(self, pages):
