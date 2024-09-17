@@ -60,12 +60,21 @@ async def on_guild_join(guild):
 
 @client.event
 async def on_message(message):
+    print(f"Handling message with ID: {message.id}, content: {message.content}, author: {message.author}, webhook_id: {message.webhook_id}")
+
+    # Ignore messages from the bot itself
+    if message.author == client.user:
+        return
+
+    CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+    mappings_collection = connect_to_mongo_and_get_collection(CONNECTION_STRING, "mappings", "companies")
+
     if message.webhook_id:
         webhook = await client.fetch_webhook(message.webhook_id)
         if webhook.name == "onboarding":
-            await onboarding.handle_message(message, guild_states)
+            await onboarding.handle_message(message, mappings_collection, guild_states, is_webhook=True)
     else:
-        await onboarding.handle_message(message, guild_states)
+        await onboarding.handle_message(message, mappings_collection, guild_states, is_webhook=False)
 
 class HelpView(discord.ui.View):
     def __init__(self, pages):
