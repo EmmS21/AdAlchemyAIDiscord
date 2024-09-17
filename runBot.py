@@ -72,9 +72,9 @@ async def on_message(message):
     if message.webhook_id:
         webhook = await client.fetch_webhook(message.webhook_id)
         if webhook.name == "onboarding":
-            await onboarding.handle_message(message, mappings_collection, guild_states, is_webhook=True)
+            await onboarding.handle_message(message, mappings_collection, guild_states)
     else:
-        await onboarding.handle_message(message, mappings_collection, guild_states, is_webhook=False)
+        await onboarding.handle_message(message, mappings_collection, guild_states)
 
 class HelpView(discord.ui.View):
     def __init__(self, pages):
